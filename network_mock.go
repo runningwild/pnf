@@ -98,16 +98,20 @@ func NewNetworkMock() Network {
   return &nm
 }
 
-func (nm *NetworkMock) Host(data []byte, ping, join func([]byte) ([]byte, error)) {
+func (nm *NetworkMock) Host(ping, join func([]byte) ([]byte, error)) {
   host_mutex.Lock()
   defer host_mutex.Unlock()
 
+  if ping == nil || join == nil {
+    nm.ping = nil
+    nm.join = nil
+  }
   nm.ping = ping
   nm.join = join
 
   for i := range hosts {
     if hosts[i] == nm {
-      if data == nil {
+      if ping == nil || join == nil {
         hosts[i] = hosts[len(hosts) - 1]
         hosts = hosts[0 : len(hosts) - 1]
       }
@@ -131,6 +135,8 @@ func (nmrh networkMockRemoteHost) Error() error {
   return nmrh.err
 }
 func (nm *NetworkMock) Ping(data []byte) []RemoteHost {
+  host_mutex.Lock()
+  defer host_mutex.Unlock()
   var rhs []RemoteHost
   for i := range hosts {
     data, err := hosts[i].ping(data)
@@ -195,7 +201,18 @@ func (nm *NetworkMock) routine() {
       nm.incoming <- conn_batch.batch
 
     case <-nm.shutdown:
-
+      for _, conn := range nm.connections {
+        close(conn.send)
+        close(conn.internal)
+      }
+      host_mutex.Lock()
+      for i := range hosts {
+        if hosts[i] == nm {
+          hosts[i] = hosts[len(hosts) - 1]
+          hosts = hosts[0 : len(hosts) - 1]
+        }
+      }
+      host_mutex.Unlock()
       return
     }
   }
@@ -215,4 +232,8 @@ func (nm *NetworkMock) Receive() <-chan EventBatch {
 
 func (nm *NetworkMock) ActiveConnections() int {
   return len(nm.connections)
+}
+
+func (nm *NetworkMock) Shutdown() {
+  nm.shutdown <- struct{}{}
 }
