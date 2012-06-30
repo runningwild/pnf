@@ -1,6 +1,5 @@
 package pnf
 
-
 type EventBatch struct {
   Opaque_data int
 
@@ -8,7 +7,7 @@ type EventBatch struct {
 }
 
 type RemoteHost interface {
-  Data()  []byte
+  Data() []byte
   Error() error
 }
 

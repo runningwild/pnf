@@ -13,23 +13,24 @@ import (
 type EventA struct {
   Data int
 }
+
 func init() {
   gob.Register(EventA{})
 }
-func (e EventA) ApplyFast(pnf.Game) {}
-func (e EventA) Apply(pnf.Game) {}
+func (e EventA) ApplyFast(pnf.Game)  {}
+func (e EventA) Apply(pnf.Game)      {}
 func (e EventA) ApplyFinal(pnf.Game) {}
 
 type EventB struct {
   Data string
 }
+
 func init() {
   gob.Register(EventA{})
 }
-func (e EventB) ApplyFast(pnf.Game) {}
-func (e EventB) Apply(pnf.Game) {}
+func (e EventB) ApplyFast(pnf.Game)  {}
+func (e EventB) Apply(pnf.Game)      {}
 func (e EventB) ApplyFinal(pnf.Game) {}
-
 
 func NetworkMockSpec(c gospec.Context) {
   var network_mutex sync.Mutex
@@ -53,7 +54,7 @@ func NetworkMockSpec(c gospec.Context) {
     res, err := nm2.Join(rhs[0], []byte("woo!"))
     c.Expect(err, Equals, error(nil))
     c.Expect(string(res), Equals, "You've joined us!")
-    
+
     var eb1 pnf.EventBatch
     eb1.Opaque_data = 123
     eb1.Event = EventA{555}

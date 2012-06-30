@@ -16,13 +16,14 @@ type ConnectionBatch struct {
   conn_id int
 }
 type ConnectionMock struct {
-  id int
+  id       int
   recv     <-chan []byte
   internal chan<- []byte
   send     chan EventBatch
 
   // Network -> cm.send -> cm.internal -> cm2.recv -> Network2
 }
+
 func (cm *ConnectionMock) Send(batch EventBatch) {
   cm.send <- batch
 }
@@ -54,18 +55,18 @@ func makeConnectionMockPair(a, b *NetworkMock) (ConnectionMock, ConnectionMock) 
   a_to_b := make(chan []byte)
   b_to_a := make(chan []byte)
   conn_a := ConnectionMock{
-    id: b.id,
-    recv: b_to_a,
+    id:       b.id,
+    recv:     b_to_a,
     internal: a_to_b,
-    send: make(chan EventBatch),
+    send:     make(chan EventBatch),
   }
   go conn_a.routineRecv(a)
   go conn_a.routineSend()
   conn_b := ConnectionMock{
-    id: a.id,
-    recv: a_to_b,
+    id:       a.id,
+    recv:     a_to_b,
     internal: b_to_a,
-    send: make(chan EventBatch),
+    send:     make(chan EventBatch),
   }
   go conn_b.routineRecv(b)
   go conn_b.routineSend()
@@ -80,9 +81,9 @@ type NetworkMock struct {
   ping, join func([]byte) ([]byte, error)
 
   connections []ConnectionMock
-  collect  chan ConnectionBatch
-  incoming chan EventBatch
-  shutdown chan struct{}
+  collect     chan ConnectionBatch
+  incoming    chan EventBatch
+  shutdown    chan struct{}
 }
 
 func NewNetworkMock() Network {
@@ -112,8 +113,8 @@ func (nm *NetworkMock) Host(ping, join func([]byte) ([]byte, error)) {
   for i := range hosts {
     if hosts[i] == nm {
       if ping == nil || join == nil {
-        hosts[i] = hosts[len(hosts) - 1]
-        hosts = hosts[0 : len(hosts) - 1]
+        hosts[i] = hosts[len(hosts)-1]
+        hosts = hosts[0 : len(hosts)-1]
       }
       return
     }
@@ -122,12 +123,12 @@ func (nm *NetworkMock) Host(ping, join func([]byte) ([]byte, error)) {
   hosts = append(hosts, nm)
 }
 
-
 type networkMockRemoteHost struct {
   data []byte
   err  error
   id   int
 }
+
 func (nmrh networkMockRemoteHost) Data() []byte {
   return nmrh.data
 }
@@ -142,8 +143,8 @@ func (nm *NetworkMock) Ping(data []byte) []RemoteHost {
     data, err := hosts[i].ping(data)
     rh := networkMockRemoteHost{
       data: data,
-      err: err,
-      id: hosts[i].id,
+      err:  err,
+      id:   hosts[i].id,
     }
     rhs = append(rhs, rh)
   }
@@ -208,8 +209,8 @@ func (nm *NetworkMock) routine() {
       host_mutex.Lock()
       for i := range hosts {
         if hosts[i] == nm {
-          hosts[i] = hosts[len(hosts) - 1]
-          hosts = hosts[0 : len(hosts) - 1]
+          hosts[i] = hosts[len(hosts)-1]
+          hosts = hosts[0 : len(hosts)-1]
         }
       }
       host_mutex.Unlock()
