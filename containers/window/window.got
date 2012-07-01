@@ -1,0 +1,50 @@
+package window(type p, type v)
+
+import (
+  "fmt"
+)
+
+type Window struct {
+  first p   // lowest valued p that can access the window
+  start int // index of p's position in the window
+  data  []v
+}
+
+func New(n int, start p) *Window {
+  return &Window{
+    first: start,
+    start: 0,
+    data:  make([]v, n),
+  }
+}
+
+func (w *Window) posToIndex(pos p) int {
+  index := (w.start + int(pos - w.first)) % len(w.data)
+  if index < 0 || index > len(w.data) {
+    panic(fmt.Sprintf("Tried to access %d, which is outside of window bounds, %d - %d.", pos, w.first, int(w.first)+len(w.data)))
+  }
+  return index
+}
+
+func (w *Window) Get(pos p) v {
+  index := w.posToIndex(pos)
+  return w.data[index]
+}
+
+func (w *Window) Set(pos p, val v) {
+  index := w.posToIndex(pos)
+  w.data[index] = val
+}
+
+func (w *Window) Start() p {
+  return w.first
+}
+
+func (w *Window) End() p {
+  return w.first + p(len(w.data))
+}
+
+func (w *Window) Advance() {
+  w.first++
+  w.start = (w.start + 1) %% (len(w.data))
+}
