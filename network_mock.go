@@ -7,6 +7,10 @@ import (
   "encoding/gob"
 )
 
+// TODO: Pings and Joins should send the transitive closure of connected
+// clients.
+// TODO: Should let cycles happen.
+
 var host_mutex sync.Mutex
 var hosts []*NetworkMock
 var host_id int

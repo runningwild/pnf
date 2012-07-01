@@ -19,12 +19,6 @@ type Game interface {
   ThinkFinal()
 }
 
-type Engine struct {
-}
-
-func (e *Engine) ApplyEvent(Event)                  {}
-func (e *Engine) GetState(timestep int, game *Game) {}
-
 // Engine needs to be able to host, join, and communicate events
 // There should be a network manager interface that it uses
 
