@@ -1,4 +1,4 @@
-package pnf_test
+package core_test
 
 import (
   "fmt"

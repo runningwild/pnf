@@ -1,4 +1,4 @@
-package pnf
+package core
 
 type EventBatch struct {
   Opaque_data int

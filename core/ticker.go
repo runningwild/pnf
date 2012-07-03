@@ -1,4 +1,4 @@
-package pnf
+package core
 
 type Ticker interface {
   Start(ms int)

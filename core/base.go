@@ -1,4 +1,4 @@
-package pnf
+package core
 
 import (
   "crypto/rand"
