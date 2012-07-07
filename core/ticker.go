@@ -30,9 +30,7 @@ func (f *FakeTicker) Chan() <-chan struct{} {
 }
 
 func (f *FakeTicker) Inc(ms int) {
-  go func() {
-    for i := 0; i < ms; i++ {
-      f.c <- struct{}{}
-    }
-  }()
+  for i := 0; i < ms; i++ {
+    f.c <- struct{}{}
+  }
 }

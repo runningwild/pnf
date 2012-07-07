@@ -2,35 +2,12 @@ package core_test
 
 import (
   "fmt"
-  "encoding/gob"
   "runningwild/pnf/core"
   "github.com/orfjackal/gospec/src/gospec"
   . "github.com/orfjackal/gospec/src/gospec"
   "sort"
   "sync"
 )
-
-type EventA struct {
-  Data int
-}
-
-func init() {
-  gob.Register(EventA{})
-}
-func (e EventA) ApplyFast(core.Game)  {}
-func (e EventA) Apply(core.Game)      {}
-func (e EventA) ApplyFinal(core.Game) {}
-
-type EventB struct {
-  Data string
-}
-
-func init() {
-  gob.Register(EventA{})
-}
-func (e EventB) ApplyFast(core.Game)  {}
-func (e EventB) Apply(core.Game)      {}
-func (e EventB) ApplyFinal(core.Game) {}
 
 var network_mutex sync.Mutex
 

@@ -34,6 +34,7 @@ func (b *Bundler) routine() {
     select {
     case <-b.shutdown:
       // TODO: Drain channels and free stuff up?
+      close(b.Events)
       return
 
     case event := <-b.Local_event:
