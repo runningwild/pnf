@@ -15,13 +15,13 @@ func BundlerSpec(c gospec.Context) {
     params.Frame_ms = 5
     params.Max_frames = 25
     completed_frame := make(chan core.StateFrame)
-    bundles := make(chan core.EngineBundle)
+    bundles := make(chan core.FrameBundle)
     local_event := make(chan core.Event)
     var bundler core.Bundler
-    bundler.Params = &params
+    bundler.Params = params
     bundler.Current_ms = 0
     bundler.Completed_frame = completed_frame
-    bundler.Bundles = bundles
+    bundler.Local_bundles = bundles
     bundler.Local_event = local_event
     bundler.Time_delta = nil
     ticker := &core.FakeTicker{}
@@ -46,15 +46,24 @@ func BundlerSpec(c gospec.Context) {
     var frame core.StateFrame = 0
     for bundle := range bundles {
       c.Expect(bundle.Frame, Equals, frame)
+      events, ok := bundle.Bundle[params.Id]
+      c.Assume(ok, Equals, true)
+      if ok {
+        if frame%2 == 0 {
+          c.Expect(len(events), Equals, 2)
+        } else {
+          c.Expect(len(events), Equals, 0)
+        }
+      }
       if frame%2 == 0 {
-        c.Assume(len(bundle.Events), Equals, 2)
+        c.Expect(len(bundle.Bundle), Equals, 1)
         c.Specify("checking bundle values", func() {
           index_a := 0
           if frame%4 != 0 {
             index_a = 1
           }
-          ea, aok := bundle.Events[index_a].(*EventA)
-          eb, bok := bundle.Events[(index_a+1)%2].(*EventB)
+          ea, aok := events[index_a].(*EventA)
+          eb, bok := events[(index_a+1)%2].(*EventB)
           c.Assume(aok, Equals, true)
           c.Assume(bok, Equals, true)
           c.Specify("checking event data", func() {
@@ -62,8 +71,6 @@ func BundlerSpec(c gospec.Context) {
             c.Expect(eb.Data, Equals, fmt.Sprintf("%d", frame/2))
           })
         })
-      } else {
-        c.Expect(len(bundle.Events), Equals, 0)
       }
       frame++
     }

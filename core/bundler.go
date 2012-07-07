@@ -9,12 +9,12 @@ package core
 // will signal to the Bundler to pause if it needs to wait for other engines
 // to catch up.
 type Bundler struct {
-  Params          *EngineParams
+  Params          EngineParams
   Ticker          Ticker
   Local_event     <-chan Event
   Time_delta      <-chan int64
   Completed_frame <-chan StateFrame
-  Bundles         chan<- EngineBundle
+  Local_bundles   chan<- FrameBundle
   Current_ms      int64
 
   shutdown             chan struct{}
@@ -34,7 +34,7 @@ func (b *Bundler) routine() {
     select {
     case <-b.shutdown:
       // TODO: Drain channels and free stuff up?
-      close(b.Bundles)
+      close(b.Local_bundles)
       return
 
     case event := <-b.Local_event:
@@ -44,9 +44,11 @@ func (b *Bundler) routine() {
       b.Current_ms++
       next_frame := StateFrame(b.Current_ms / b.Params.Frame_ms)
       for ; current_frame < next_frame; current_frame++ {
-        b.Bundles <- EngineBundle{
-          Frame:  current_frame,
-          Events: b.current_event_bundle,
+        b.Local_bundles <- FrameBundle{
+          Frame: current_frame,
+          Bundle: EventBundle{
+            b.Params.Id: b.current_event_bundle,
+          },
         }
         b.current_event_bundle = nil
       }

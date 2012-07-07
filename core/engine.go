@@ -4,7 +4,7 @@ type EngineId int64
 type StateFrame int
 
 type EngineParams struct {
-  Id         int64
+  Id         EngineId
   Delay_ms   int64
   Frame_ms   int64
   Max_frames int
