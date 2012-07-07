@@ -6,7 +6,7 @@ import (
   "runningwild/pnf/core"
   "github.com/orfjackal/gospec/src/gospec"
   . "github.com/orfjackal/gospec/src/gospec"
-  // "sort"
+  "sort"
   "sync"
 )
 
@@ -43,7 +43,6 @@ func NetworkMockSpec(c gospec.Context) {
       func() {
         network_mutex.Lock()
         defer network_mutex.Unlock()
-        fmt.Printf("run %d\n", i)
         nm1 = core.NewNetworkMock()
         nm2 = core.NewNetworkMock()
         on_ping := func(data []byte) ([]byte, error) {
@@ -81,42 +80,42 @@ func NetworkMockSpec(c gospec.Context) {
     }
   })
 
-  // c.Specify("NetworkMocks can differentiate between multiple hosts.", func() {
-  //   network_mutex.Lock()
-  //   defer network_mutex.Unlock()
-  //   N := 1000
-  //   hosts := make([]core.Network, N)
-  //   pad := func(n int, length int) string {
-  //     s := fmt.Sprintf("%d", n)
-  //     for len(s) < length {
-  //       s = "0" + s
-  //     }
-  //     return s
-  //   }
-  //   for i := range hosts {
-  //     hosts[i] = core.NewNetworkMock()
-  //     defer hosts[i].Shutdown()
-  //     num := i
-  //     on_ping := func(data []byte) ([]byte, error) {
-  //       return []byte(fmt.Sprintf("Ping(%s)", pad(num, 10))), nil
-  //     }
-  //     on_join := func([]byte) ([]byte, error) {
-  //       return []byte(fmt.Sprintf("Join(%s)", pad(num, 10))), nil
-  //     }
-  //     hosts[i].Host(on_ping, on_join)
-  //   }
-  //   rhs := hosts[0].Ping([]byte("Waffle"))
-  //   c.Expect(len(rhs), Equals, N)
-  //   var resps []string
-  //   for i := range rhs {
-  //     resps = append(resps, string(rhs[i].Data()))
-  //   }
-  //   sort.Strings(resps)
-  //   for i := range resps {
-  //     c.Expect(resps[i], Equals, fmt.Sprintf("Ping(%s)", pad(i, 10)))
-  //   }
-  //   res, err := hosts[0].Join(rhs[4], []byte("Pancake"))
-  //   c.Expect(err, Equals, error(nil))
-  //   c.Expect(string(res), Equals, fmt.Sprintf("Join(%s)", pad(4, 10)))
-  // })
+  c.Specify("NetworkMocks can differentiate between multiple hosts.", func() {
+    network_mutex.Lock()
+    defer network_mutex.Unlock()
+    N := 1000
+    hosts := make([]core.Network, N)
+    pad := func(n int, length int) string {
+      s := fmt.Sprintf("%d", n)
+      for len(s) < length {
+        s = "0" + s
+      }
+      return s
+    }
+    for i := range hosts {
+      hosts[i] = core.NewNetworkMock()
+      defer hosts[i].Shutdown()
+      num := i
+      on_ping := func(data []byte) ([]byte, error) {
+        return []byte(fmt.Sprintf("Ping(%s)", pad(num, 10))), nil
+      }
+      on_join := func([]byte) ([]byte, error) {
+        return []byte(fmt.Sprintf("Join(%s)", pad(num, 10))), nil
+      }
+      hosts[i].Host(on_ping, on_join)
+    }
+    rhs := hosts[0].Ping([]byte("Waffle"))
+    c.Expect(len(rhs), Equals, N)
+    var resps []string
+    for i := range rhs {
+      resps = append(resps, string(rhs[i].Data()))
+    }
+    sort.Strings(resps)
+    for i := range resps {
+      c.Expect(resps[i], Equals, fmt.Sprintf("Ping(%s)", pad(i, 10)))
+    }
+    res, err := hosts[0].Join(rhs[4], []byte("Pancake"))
+    c.Expect(err, Equals, error(nil))
+    c.Expect(string(res), Equals, fmt.Sprintf("Join(%s)", pad(4, 10)))
+  })
 }
