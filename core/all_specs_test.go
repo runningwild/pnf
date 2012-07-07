@@ -8,5 +8,6 @@ import (
 func TestAllSpecs(t *testing.T) {
   r := gospec.NewRunner()
   r.AddSpec(NetworkMockSpec)
+  r.AddSpec(BundlerSpec)
   gospec.MainGoTest(r, t)
 }

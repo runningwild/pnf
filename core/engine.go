@@ -1,9 +1,5 @@
 package core
 
-import (
-  "fmt"
-)
-
 type EngineId int64
 type StateFrame int
 
@@ -37,12 +33,12 @@ func (ev EventBundles) Each(frame StateFrame, f func(EngineId, []Event)) {
 }
 
 type EngineParams struct {
-  delay_ms   int
-  frame_ms   int
-  max_frames int
+  Id         int64
+  Delay_ms   int64
+  Frame_ms   int64
+  Max_frames int
 }
 type Engine struct {
-  id      EngineId
   network Network
 
   params EngineParams
@@ -56,51 +52,50 @@ type Engine struct {
 
 func NewEngine(network Network) *Engine {
   return &Engine{
-    id:                EngineId(RandomId()),
     network:           network,
-    ticker:            NewFakeTicker(),
+    ticker:            &FakeTicker{},
     local_events_chan: make(chan Event, 10),
   }
 }
 
-func (e *Engine) StartNewGame(params EngineParams, game Game) {
-  e.params = params
-  e.states.Set(0, game)
-}
+// func (e *Engine) StartNewGame(params EngineParams, game Game) {
+//   e.params = params
+//   e.states.Set(0, game)
+// }
 
-// This is the routine that handles all communication
-// On each tick we advance the game state
-// receives events from localhost
-// receives events from the network
-func (e *Engine) routine() {
-  e.ticker.Start(e.params.frame_ms)
-  var frame StateFrame = 0
-  for {
-    select {
+// // This is the routine that handles all communication
+// // On each tick we advance the game state
+// // receives events from localhost
+// // receives events from the network
+// func (e *Engine) routine() {
+//   e.ticker.Start()
+//   var frame StateFrame = 0
+//   for {
+//     select {
 
-    // Every time we get a ping from the ticker it's time to advance the game
-    // state.  If we cannot we'll need to pause and wait for other engines or
-    // drop them entirely.
-    case <-e.ticker.Chan():
-      // bundle up our local events and send them along the network
-      bundle := make(EventBundles)
-      bundle[e.id] = e.local_events
-      e.local_events = nil
-      fmt.Printf("%v\n", bundle)
-      frame++
+//     // Every time we get a ping from the ticker it's time to advance the game
+//     // state.  If we cannot we'll need to pause and wait for other engines or
+//     // drop them entirely.
+//     case <-e.ticker.Chan():
+//       // bundle up our local events and send them along the network
+//       bundle := make(EventBundles)
+//       bundle[e.id] = e.local_events
+//       e.local_events = nil
+//       fmt.Printf("%v\n", bundle)
+//       frame++
 
-    // If the local user has applied some events we need to grab them and them
-    // to the appropriate state, and send them across the network.
-    case event := <-e.local_events_chan:
-      e.local_events = append(e.local_events, event)
-    }
-  }
-}
+//     // If the local user has applied some events we need to grab them and them
+//     // to the appropriate state, and send them across the network.
+//     case event := <-e.local_events_chan:
+//       e.local_events = append(e.local_events, event)
+//     }
+//   }
+// }
 
-// Queues the event to be applied on a future game state that is at least
-// Delay frames in the future.
-func (e *Engine) ApplyEvent(event Event) {
-  e.local_events_chan <- event
-}
+// // Queues the event to be applied on a future game state that is at least
+// // Delay frames in the future.
+// func (e *Engine) ApplyEvent(event Event) {
+//   e.local_events_chan <- event
+// }
 
-func (e *Engine) GetState(timestep int, game *Game) {}
+// func (e *Engine) GetState(timestep int, game *Game) {}

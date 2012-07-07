@@ -1,49 +1,38 @@
 package core
 
 type Ticker interface {
-  Start(ms int)
+  Start()
   Stop()
-  Chan() <-chan int
+  Chan() <-chan struct{}
 }
 
 type FakeTicker struct {
-  cur   int
-  delta int
-  c     chan int
+  c chan struct{}
 }
 
-func NewFakeTicker() *FakeTicker {
-  return &FakeTicker{}
-}
-
-func (f *FakeTicker) Start(delta int) {
-  if f.delta != 0 {
+func (f *FakeTicker) Start() {
+  if f.c != nil {
     panic("Started an already started FakeTicker.")
   }
-  if delta <= 0 {
-    panic("Cannot start FakeTicker with delta <= 0.")
-  }
-  f.delta = delta
-  f.c = make(chan int)
+  f.c = make(chan struct{})
 }
 
 func (f *FakeTicker) Stop() {
-  if f.delta <= 0 {
+  if f.c == nil {
     panic("Cannot stop a FakeTicker that has not been started yet.")
   }
-  f.delta = 0
   close(f.c)
+  f.c = nil
 }
 
-func (f *FakeTicker) Chan() <-chan int {
+func (f *FakeTicker) Chan() <-chan struct{} {
   return f.c
 }
 
 func (f *FakeTicker) Inc(ms int) {
-  for i := 0; i < ms; i++ {
-    f.cur++
-    if f.cur%f.delta == 0 {
-      f.c <- f.cur
+  go func() {
+    for i := 0; i < ms; i++ {
+      f.c <- struct{}{}
     }
-  }
+  }()
 }
