@@ -1,7 +1,6 @@
 package core
 
 import (
-  "fmt"
   "bytes"
   "sync"
   "errors"
@@ -115,20 +114,17 @@ func (nm *NetworkMock) Host(ping, join func([]byte) ([]byte, error)) {
     nm.ping = ping
     nm.join = join
   }
-  fmt.Printf("Pre: %p %p\n", ping, join)
   if nm.ping == nil {
     for i := 0; i < len(hosts); i++ {
       if hosts[i] == nm {
         hosts[i] = hosts[len(hosts)-1]
         hosts = hosts[0 : len(hosts)-1]
-        fmt.Printf("removed host %d\n", nm.id)
       }
     }
     return
   }
 
   hosts = append(hosts, nm)
-  fmt.Printf("Added host %p %p %d\n", ping, join, nm.id)
 }
 
 type networkMockRemoteHost struct {
@@ -184,7 +180,6 @@ func (nm *NetworkMock) Join(remote RemoteHost, data []byte) ([]byte, error) {
       conn_a, conn_b := makeConnectionMockPair(nm, hosts[i])
       nm.connections = append(nm.connections, conn_a)
       hosts[i].connections = append(hosts[i].connections, conn_b)
-      fmt.Printf("Connected to %d\n", i)
       return hosts[i].join(data)
     }
   }

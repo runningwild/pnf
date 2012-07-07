@@ -34,7 +34,6 @@ func NetworkMockSpec(c gospec.Context) {
         c.Specify("Can connect", func() {
           c.Expect(string(rhs[0].Data()), Equals, "Join us! Monkeys")
           res, err := nm2.Join(rhs[0], []byte("woo!"))
-          fmt.Printf("On Join: res(%s), err(%v)\n", res, err)
           c.Expect(string(res), Equals, "You've joined us!")
           c.Assume(err, Equals, error(nil))
           c.Specify("Can send data", func() {
@@ -47,11 +46,9 @@ func NetworkMockSpec(c gospec.Context) {
             c.Expect(eb3, Equals, eb2)
           })
         })
-        fmt.Printf("Shutdown...\n")
         nm1.Shutdown()
         nm2.Shutdown()
         rhs = nm2.Ping([]byte("Monkeys"))
-        fmt.Printf("Shutdown complete: %d\n", len(rhs))
         c.Expect(len(rhs), Equals, 0)
       }()
     }

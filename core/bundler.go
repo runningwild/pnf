@@ -14,7 +14,7 @@ type Bundler struct {
   Local_event     <-chan Event
   Time_delta      <-chan int64
   Completed_frame <-chan StateFrame
-  Events          chan<- []Event
+  Bundles         chan<- EngineBundle
   Current_ms      int64
 
   shutdown             chan struct{}
@@ -34,7 +34,7 @@ func (b *Bundler) routine() {
     select {
     case <-b.shutdown:
       // TODO: Drain channels and free stuff up?
-      close(b.Events)
+      close(b.Bundles)
       return
 
     case event := <-b.Local_event:
@@ -44,7 +44,10 @@ func (b *Bundler) routine() {
       b.Current_ms++
       next_frame := StateFrame(b.Current_ms / b.Params.Frame_ms)
       for ; current_frame < next_frame; current_frame++ {
-        b.Events <- b.current_event_bundle
+        b.Bundles <- EngineBundle{
+          Frame:  current_frame,
+          Events: b.current_event_bundle,
+        }
         b.current_event_bundle = nil
       }
 
