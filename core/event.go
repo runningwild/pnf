@@ -1,12 +1,12 @@
 package core
 
-// FastX happens once, potentially before any events arrive
+// FirstX happens once, potentially before any events arrive
 // X can happen multiple times, whenever anything changes
 // FinalX only happens after all events have arrived
 
 type Event interface {
   // Cannot modify the Game
-  ApplyFast(Game)
+  ApplyFirst(Game)
 
   // Can modify the game
   Apply(Game)
@@ -54,7 +54,7 @@ func (fb EventBundle) Each(frame StateFrame, f func(EngineId, []Event)) {
 }
 
 type Game interface {
-  ThinkFast()
+  ThinkFirst()
   Think()
   ThinkFinal()
   Copy() Game

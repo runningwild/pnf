@@ -14,7 +14,7 @@ type EventA struct {
 func init() {
   gob.Register(EventA{})
 }
-func (e EventA) ApplyFast(core.Game) {}
+func (e EventA) ApplyFirst(core.Game) {}
 func (e EventA) Apply(g core.Game) {
   g.(*TestGame).A += e.Data
 }
@@ -27,7 +27,7 @@ type EventB struct {
 func init() {
   gob.Register(EventA{})
 }
-func (e EventB) ApplyFast(core.Game) {}
+func (e EventB) ApplyFirst(core.Game) {}
 func (e EventB) Apply(g core.Game) {
   g.(*TestGame).B = e.Data
 }
@@ -39,7 +39,7 @@ type TestGame struct {
   Thinks int
 }
 
-func (g *TestGame) ThinkFast()  {}
+func (g *TestGame) ThinkFirst()  {}
 func (g *TestGame) ThinkFinal() {}
 func (g *TestGame) Think() {
   g.Thinks++
