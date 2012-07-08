@@ -14,8 +14,10 @@ type EventA struct {
 func init() {
   gob.Register(EventA{})
 }
-func (e EventA) ApplyFast(core.Game)  {}
-func (e EventA) Apply(core.Game)      {}
+func (e EventA) ApplyFast(core.Game) {}
+func (e EventA) Apply(g core.Game) {
+  g.(*TestGame).A += e.Data
+}
 func (e EventA) ApplyFinal(core.Game) {}
 
 type EventB struct {
@@ -25,13 +27,34 @@ type EventB struct {
 func init() {
   gob.Register(EventA{})
 }
-func (e EventB) ApplyFast(core.Game)  {}
-func (e EventB) Apply(core.Game)      {}
+func (e EventB) ApplyFast(core.Game) {}
+func (e EventB) Apply(g core.Game) {
+  g.(*TestGame).B = e.Data
+}
 func (e EventB) ApplyFinal(core.Game) {}
+
+type TestGame struct {
+  A      int
+  B      string
+  Thinks int
+}
+
+func (g *TestGame) ThinkFast()  {}
+func (g *TestGame) ThinkFinal() {}
+func (g *TestGame) Think() {
+  g.Thinks++
+}
+func (g *TestGame) Copy() core.Game {
+  g2 := *g
+  println("Original: ", g.Thinks)
+  println("Copy: ", g2.Thinks)
+  return &g2
+}
 
 func TestAllSpecs(t *testing.T) {
   r := gospec.NewRunner()
   r.AddSpec(NetworkMockSpec)
   r.AddSpec(BundlerSpec)
+  r.AddSpec(UpdaterSpec)
   gospec.MainGoTest(r, t)
 }

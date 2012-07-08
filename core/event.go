@@ -57,6 +57,7 @@ type Game interface {
   ThinkFast()
   Think()
   ThinkFinal()
+  Copy() Game
 }
 
 // Engine needs to be able to host, join, and communicate events

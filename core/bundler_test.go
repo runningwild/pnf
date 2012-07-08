@@ -11,7 +11,7 @@ func BundlerSpec(c gospec.Context) {
   c.Specify("Basic Bundler functionality.", func() {
     var params core.EngineParams
     params.Id = 1234
-    params.Delay_ms = 15
+    params.Delay = 2
     params.Frame_ms = 5
     params.Max_frames = 25
     completed_frame := make(chan core.StateFrame)
