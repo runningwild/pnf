@@ -2,7 +2,6 @@ package core_test
 
 import (
   "encoding/gob"
-  "runningwild/pnf/core"
   "github.com/orfjackal/gospec/src/gospec"
   "testing"
 )
@@ -14,11 +13,11 @@ type EventA struct {
 func init() {
   gob.Register(EventA{})
 }
-func (e EventA) ApplyFirst(core.Game) {}
-func (e EventA) Apply(g core.Game) {
+func (e EventA) ApplyFirst(interface{}) {}
+func (e EventA) Apply(g interface{}) {
   g.(*TestGame).A += e.Data
 }
-func (e EventA) ApplyFinal(core.Game) {}
+func (e EventA) ApplyFinal(interface{}) {}
 
 type EventB struct {
   Data string
@@ -27,11 +26,11 @@ type EventB struct {
 func init() {
   gob.Register(EventA{})
 }
-func (e EventB) ApplyFirst(core.Game) {}
-func (e EventB) Apply(g core.Game) {
+func (e EventB) ApplyFirst(interface{}) {}
+func (e EventB) Apply(g interface{}) {
   g.(*TestGame).B = e.Data
 }
-func (e EventB) ApplyFinal(core.Game) {}
+func (e EventB) ApplyFinal(interface{}) {}
 
 type TestGame struct {
   A      int

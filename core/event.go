@@ -6,11 +6,11 @@ package core
 
 type Event interface {
   // Cannot modify the Game
-  ApplyFirst(Game)
+  ApplyFirst(interface{})
 
   // Can modify the game
-  Apply(Game)
-  ApplyFinal(Game)
+  Apply(interface{})
+  ApplyFinal(interface{})
 }
 
 type Game interface {
