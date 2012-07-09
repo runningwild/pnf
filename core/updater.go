@@ -67,7 +67,7 @@ func (u *Updater) advance() {
   prev_data := u.data_window.Get(u.oldest_dirty_frame - 1)
   for frame := u.oldest_dirty_frame; frame <= u.global_frame; frame++ {
     data := u.data_window.Get(frame)
-    data.Game = prev_data.Game.Copy()
+    data.Game = prev_data.Game.Copy().(Game)
     data.Bundle.Each(frame, func(id EngineId, events []Event) {
       for _, event := range events {
         event.Apply(data.Game)
@@ -93,9 +93,12 @@ func (u *Updater) advance() {
 }
 
 func (u *Updater) initFrameData(frame StateFrame) {
+  if frame-1 < u.data_window.Start() {
+    return
+  }
   prev_data := u.data_window.Get(frame - 1)
   var data FrameData
-  data.Game = prev_data.Game.Copy()
+  data.Game = prev_data.Game.Copy().(Game)
   data.Bundle = make(EventBundle)
   data.Info = prev_data.Info.Copy()
   u.data_window.Set(frame, data)
@@ -107,9 +110,11 @@ func (u *Updater) routine() {
     case local_bundle := <-u.Local_bundles:
       // TODO: Check that the local bundle is in bounds
       u.local_frame = local_bundle.Frame
-      if u.local_frame > u.global_frame {
+      for frame := u.global_frame + 1; frame <= u.local_frame; frame++ {
+        u.initFrameData(frame)
+      }
+      if u.global_frame < u.local_frame {
         u.global_frame = u.local_frame
-        u.initFrameData(u.global_frame)
       }
       if u.local_frame < u.oldest_dirty_frame {
         u.oldest_dirty_frame = u.local_frame
@@ -121,9 +126,11 @@ func (u *Updater) routine() {
       u.advance()
 
     case remote_bundle := <-u.Remote_bundles:
-      if remote_bundle.Frame > u.global_frame {
+      for frame := u.global_frame + 1; frame <= remote_bundle.Frame; frame++ {
+        u.initFrameData(frame)
+      }
+      if u.global_frame < remote_bundle.Frame {
         u.global_frame = remote_bundle.Frame
-        u.initFrameData(u.global_frame)
       }
       if remote_bundle.Frame < u.oldest_dirty_frame {
         u.oldest_dirty_frame = remote_bundle.Frame

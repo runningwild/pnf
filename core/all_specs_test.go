@@ -39,12 +39,12 @@ type TestGame struct {
   Thinks int
 }
 
-func (g *TestGame) ThinkFirst()  {}
+func (g *TestGame) ThinkFirst() {}
 func (g *TestGame) ThinkFinal() {}
 func (g *TestGame) Think() {
   g.Thinks++
 }
-func (g *TestGame) Copy() core.Game {
+func (g *TestGame) Copy() interface{} {
   g2 := *g
   println("Original: ", g.Thinks)
   println("Copy: ", g2.Thinks)
