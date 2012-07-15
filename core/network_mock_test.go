@@ -5,7 +5,7 @@ import (
   "runningwild/pnf/core"
   "github.com/orfjackal/gospec/src/gospec"
   . "github.com/orfjackal/gospec/src/gospec"
-  "sort"
+  "errors"
   "sync"
 )
 
@@ -13,83 +13,54 @@ var network_mutex sync.Mutex
 
 func NetworkMockSpec(c gospec.Context) {
   c.Specify("NetworkMocks can connect to eachother and send Events.", func() {
-    var nm1, nm2 core.Network
-    // Repeating the joining to make failing more likely if things aren't
-    // synced up properly.
-    for i := 0; i < 50; i++ {
-      func() {
-        network_mutex.Lock()
-        defer network_mutex.Unlock()
-        nm1 = core.NewNetworkMock()
-        nm2 = core.NewNetworkMock()
-        on_ping := func(data []byte) ([]byte, error) {
-          return []byte("Join us! " + string(data)), nil
-        }
-        on_join := func([]byte) ([]byte, error) {
-          return []byte("You've joined us!"), nil
-        }
-        nm1.Host(on_ping, on_join)
-        rhs := nm2.Ping([]byte("Monkeys"))
-        c.Assume(len(rhs), Equals, 1)
-        c.Specify("Can connect", func() {
-          c.Expect(string(rhs[0].Data()), Equals, "Join us! Monkeys")
-          res, err := nm2.Join(rhs[0], []byte("woo!"))
-          c.Expect(string(res), Equals, "You've joined us!")
-          c.Assume(err, Equals, error(nil))
-          c.Specify("Can send data", func() {
-            var eb1 core.EventBatch
-            eb1.Opaque_data = 123
-            eb1.Event = EventA{555}
-            eb2 := eb1
-            go nm2.Send(eb1)
-            eb3 := <-nm1.Receive()
-            c.Expect(eb3, Equals, eb2)
-          })
-        })
-        nm1.Shutdown()
-        nm2.Shutdown()
-        rhs = nm2.Ping([]byte("Monkeys"))
-        c.Expect(len(rhs), Equals, 0)
-      }()
+    var net core.NetworkMock
+    hm1 := core.NewHostMock(&net)
+    hm2 := core.NewHostMock(&net)
+    c.Expect(hm1, Not(Equals), nil)
+    c.Expect(hm2, Not(Equals), nil)
+    ping_func := func(data []byte) ([]byte, error) {
+      return []byte(fmt.Sprintf("Ping: %s", data)), nil
     }
-  })
-
-  c.Specify("NetworkMocks can differentiate between multiple hosts.", func() {
-    network_mutex.Lock()
-    defer network_mutex.Unlock()
-    N := 1000
-    hosts := make([]core.Network, N)
-    pad := func(n int, length int) string {
-      s := fmt.Sprintf("%d", n)
-      for len(s) < length {
-        s = "0" + s
+    join_func := func(data []byte) error {
+      if string(data) == "password" {
+        return nil
       }
-      return s
+      return errors.New("fail!")
     }
-    for i := range hosts {
-      hosts[i] = core.NewNetworkMock()
-      defer hosts[i].Shutdown()
-      num := i
-      on_ping := func(data []byte) ([]byte, error) {
-        return []byte(fmt.Sprintf("Ping(%s)", pad(num, 10))), nil
-      }
-      on_join := func([]byte) ([]byte, error) {
-        return []byte(fmt.Sprintf("Join(%s)", pad(num, 10))), nil
-      }
-      hosts[i].Host(on_ping, on_join)
-    }
-    rhs := hosts[0].Ping([]byte("Waffle"))
-    c.Expect(len(rhs), Equals, N)
-    var resps []string
-    for i := range rhs {
-      resps = append(resps, string(rhs[i].Data()))
-    }
-    sort.Strings(resps)
-    for i := range resps {
-      c.Expect(resps[i], Equals, fmt.Sprintf("Ping(%s)", pad(i, 10)))
-    }
-    res, err := hosts[0].Join(rhs[4], []byte("Pancake"))
+    hm1.Host(ping_func, join_func)
+    rhs := hm2.Ping([]byte("MONKEY"))
+    c.Expect(len(rhs), Equals, 1)
+    conn, err := hm2.Join(rhs[0], []byte("I am the monkey"))
+    c.Expect(conn, Equals, nil)
+    c.Expect(err, Not(Equals), nil)
+    conn, err = hm2.Join(rhs[0], []byte("password"))
+    c.Expect(conn, Not(Equals), nil)
     c.Expect(err, Equals, error(nil))
-    c.Expect(string(res), Equals, fmt.Sprintf("Join(%s)", pad(4, 10)))
+
+    // We've connected, so hm1 should be able to find a new connection.
+    conn2 := <-hm1.NewConns()
+    c.Expect(conn2, Not(Equals), nil)
+    fb := core.FrameBundle{}
+    fb.Frame = 10
+    fb.Bundle = core.EventBundle{
+      1: []core.Event{EventA{}},
+      2: nil,
+    }
+    go func() {
+      conn.SendFrameBundle(fb)
+    }()
+    fb2 := <-conn2.RecvFrameBundle()
+    c.Expect(fb2.Frame, Equals, fb.Frame)
+    c.Expect(len(fb2.Bundle), Equals, len(fb.Bundle))
+    if len(fb2.Bundle) == len(fb.Bundle) {
+      c.Expect(len(fb2.Bundle[1]), Equals, 1)
+      if len(fb2.Bundle[1]) == 1 {
+        _, ok := fb2.Bundle[1][0].(EventA)
+        c.Expect(ok, Equals, true)
+        _, ok = fb2.Bundle[1][0].(EventB)
+        c.Expect(ok, Equals, false)
+      }
+      c.Expect(len(fb2.Bundle[0]), Equals, 0)
+    }
   })
 }

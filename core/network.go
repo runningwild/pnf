@@ -11,6 +11,22 @@ type RemoteHost interface {
   Error() error
 }
 
+type Heartbeat struct {
+  Id int
+}
+
+// Higher level version of net.Conn
+// Can send/recv the following:
+//   FrameBundles
+//   Heartbeats/pings
+type Conn interface {
+  SendData([]byte)
+  RecvData() <-chan []byte
+  SendFrameBundle(FrameBundle)
+  RecvFrameBundle() <-chan FrameBundle
+  Close() error
+}
+
 // A Network maintains connections with other engines.
 // Host - allow others to connect to it.
 // Find - find hosts.
@@ -25,20 +41,16 @@ type Network interface {
   // join: like ping, called when someone requests to join, if error is not
   // nil it indicates that the join failed.
   // both ping and join may be called concurrently, so lock if you need to.
-  Host(ping, join func([]byte) ([]byte, error))
+  Host(ping func([]byte) ([]byte, error), join func([]byte) error)
 
   // Search for hosts on the LAN, sending them data along with the ping.
   Ping(data []byte) []RemoteHost
 
-  // data can be anything.  Returns nil iff the join was successful.
-  Join(remote RemoteHost, data []byte) ([]byte, error)
+  // data can be anything.
+  Join(remote RemoteHost, data []byte) (Conn, error)
 
-  // Broadcasts an event package.  Must immediately return.
-  Send(batch EventBatch)
-
-  // Event packages that have been received from other engines will be
-  // available here.
-  Receive() <-chan EventBatch
+  // All new connections will be made available on this channel.
+  NewConns() <-chan Conn
 
   ActiveConnections() int
 

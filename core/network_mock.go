@@ -11,120 +11,219 @@ import (
 // clients.
 // TODO: Shouldn't let cycles happen.
 
-var host_mutex sync.Mutex
-var hosts []*NetworkMock
-var host_id int
-
-type ConnectionBatch struct {
-  batch   EventBatch
-  conn_id int
-}
-type ConnectionMock struct {
-  id       int
-  recv     <-chan []byte
-  internal chan<- []byte
-  send     chan EventBatch
-
-  // Network -> cm.send -> cm.internal -> cm2.recv -> Network2
-}
-
-func (cm *ConnectionMock) Send(batch EventBatch) {
-  cm.send <- batch
-}
-func (cm *ConnectionMock) routineRecv(nm *NetworkMock) {
-  for batch_data := range cm.recv {
-    var batch EventBatch
-    err := gob.NewDecoder(bytes.NewBuffer(batch_data)).Decode(&batch)
-    if err != nil {
-      println("Error with gob decoding")
-      // log an error
-    } else {
-      nm.collect <- ConnectionBatch{batch, cm.id}
-    }
-  }
-}
-func (cm *ConnectionMock) routineSend() {
-  for batch := range cm.send {
-    buffer := bytes.NewBuffer(nil)
-    err := gob.NewEncoder(buffer).Encode(batch)
-    if err != nil {
-      println("Error with gob encoding")
-      // log an error
-    } else {
-      cm.internal <- buffer.Bytes()
-    }
-  }
-}
-func makeConnectionMockPair(a, b *NetworkMock) (ConnectionMock, ConnectionMock) {
-  a_to_b := make(chan []byte)
-  b_to_a := make(chan []byte)
-  conn_a := ConnectionMock{
-    id:       b.id,
-    recv:     b_to_a,
-    internal: a_to_b,
-    send:     make(chan EventBatch),
-  }
-  go conn_a.routineRecv(a)
-  go conn_a.routineSend()
-  conn_b := ConnectionMock{
-    id:       a.id,
-    recv:     a_to_b,
-    internal: b_to_a,
-    send:     make(chan EventBatch),
-  }
-  go conn_b.routineRecv(b)
-  go conn_b.routineSend()
-  return conn_a, conn_b
-}
-
-// NetworkMock is only useful for testing multiple engines in a single process
 type NetworkMock struct {
+  host_mutex sync.Mutex
+  hosts      []*HostMock
+  host_id    int
+}
+
+type ConnMock struct {
+  // mimics transfer of data over tcp
+  send chan<- []byte
+  recv <-chan []byte
+
+  // typed data, before and after it travels through recv
+  send_bytes, recv_bytes   chan []byte
+  send_bundle, recv_bundle chan FrameBundle
+
+  shutdown chan struct{}
+}
+type dataContainer struct {
+  Data         []byte
+  Frame_bundle *FrameBundle
+}
+
+func (c *ConnMock) routine() {
+  for {
+    var dc dataContainer
+    send := false
+    select {
+    case <-c.shutdown:
+      return
+
+    case data := <-c.send_bytes:
+      dc.Data = data
+      send = true
+
+    case frame_bundle := <-c.send_bundle:
+      dc.Frame_bundle = &frame_bundle
+      send = true
+
+    case data := <-c.recv:
+      dec := gob.NewDecoder(bytes.NewBuffer(data))
+      var dc dataContainer
+      err := dec.Decode(&dc)
+      if err != nil {
+        panic(err)
+        // TODO: What to do?
+      }
+      go func() {
+        switch {
+        case dc.Data != nil:
+          c.recv_bytes <- dc.Data
+        case dc.Frame_bundle != nil:
+          c.recv_bundle <- *dc.Frame_bundle
+        }
+      }()
+    }
+    if send {
+      buf := bytes.NewBuffer(nil)
+      enc := gob.NewEncoder(buf)
+      err := enc.Encode(dc)
+      if err != nil {
+        panic(err)
+        // TODO: What to do?
+      }
+      go func() {
+        c.send <- buf.Bytes()
+      }()
+    }
+  }
+}
+
+func (c *ConnMock) SendData(data []byte) {
+  c.send_bytes <- data
+}
+func (c *ConnMock) RecvData() <-chan []byte {
+  return c.recv_bytes
+}
+func (c *ConnMock) SendFrameBundle(frame_bundle FrameBundle) {
+  c.send_bundle <- frame_bundle
+}
+func (c *ConnMock) RecvFrameBundle() <-chan FrameBundle {
+  return c.recv_bundle
+}
+func (c *ConnMock) Close() error {
+  c.shutdown <- struct{}{}
+  return nil
+}
+
+func makeConnMockPair(hm1, hm2 *HostMock) (Conn, Conn) {
+  var c1, c2 ConnMock
+
+  c1.recv_bundle = make(chan FrameBundle)
+  c1.send_bundle = make(chan FrameBundle)
+  c1.recv_bytes = make(chan []byte)
+  c1.send_bytes = make(chan []byte)
+  c2.recv_bundle = make(chan FrameBundle)
+  c2.send_bundle = make(chan FrameBundle)
+  c2.recv_bytes = make(chan []byte)
+  c2.send_bytes = make(chan []byte)
+
+  send_1 := make(chan []byte)
+  recv_1 := make(chan []byte)
+  send_2 := make(chan []byte)
+  recv_2 := make(chan []byte)
+
+  c1.send = send_1
+  c1.recv = recv_1
+  c2.send = send_2
+  c2.recv = recv_2
+
+  cd1 := hostConnMockData{
+    remote_id:   hm2.id,
+    send:        send_1,
+    recv:        recv_1,
+    remote_send: send_2,
+    remote_recv: recv_2,
+    shutdown:    make(chan struct{}),
+  }
+  cd2 := hostConnMockData{
+    remote_id:   hm1.id,
+    send:        send_2,
+    recv:        recv_2,
+    remote_send: send_1,
+    remote_recv: recv_1,
+    shutdown:    make(chan struct{}),
+  }
+
+  go c1.routine()
+  go c2.routine()
+
+  go hm1.connRoutine(&cd1)
+  go hm2.connRoutine(&cd2)
+
+  return &c1, &c2
+}
+
+type hostConnMockData struct {
+  // host_id of the remote host
+  remote_id int
+
+  // send and recv correspond to send and recv on the local ConnMock
+  send <-chan []byte
+  recv chan<- []byte
+
+  // remote_send and remote_recv correspond to send and recv on the remote
+  // ConnMock
+  remote_send <-chan []byte
+  remote_recv chan<- []byte
+
+  shutdown chan struct{}
+}
+
+// HostMock is only useful for testing multiple engines in a single process
+type HostMock struct {
+  net *NetworkMock
+
   id   int
   data []byte
 
-  ping, join func([]byte) ([]byte, error)
+  ping func([]byte) ([]byte, error)
+  join func([]byte) error
 
-  connections []ConnectionMock
-  collect     chan ConnectionBatch
-  incoming    chan EventBatch
-  shutdown    chan struct{}
+  conn_data map[*ConnMock]hostConnMockData
+
+  new_conns chan Conn
+
+  shutdown chan struct{}
 }
 
-func NewNetworkMock() Network {
-  host_mutex.Lock()
-  defer host_mutex.Unlock()
-  var nm NetworkMock
-  nm.collect = make(chan ConnectionBatch, 1000)
-  nm.shutdown = make(chan struct{})
-  nm.incoming = make(chan EventBatch)
-  nm.id = host_id
-  host_id++
-  go nm.routine()
-  return &nm
+func NewHostMock(net *NetworkMock) Network {
+  net.host_mutex.Lock()
+  defer net.host_mutex.Unlock()
+  var hm HostMock
+  hm.net = net
+  hm.id = hm.net.host_id
+  hm.net.host_id++
+  hm.new_conns = make(chan Conn)
+  hm.net.hosts = append(hm.net.hosts, &hm)
+  go hm.routine()
+  return &hm
 }
 
-func (nm *NetworkMock) Host(ping, join func([]byte) ([]byte, error)) {
-  host_mutex.Lock()
-  defer host_mutex.Unlock()
+func (hm *HostMock) connRoutine(cd *hostConnMockData) {
+  var wg sync.WaitGroup
+  for {
+    select {
+    case data := <-cd.send:
+      wg.Add(1)
+      go func() {
+        cd.remote_recv <- data
+        wg.Done()
+      }()
 
-  if ping == nil || join == nil {
-    nm.ping = nil
-    nm.join = nil
-  } else {
-    nm.ping = ping
-    nm.join = join
-  }
-  if nm.ping == nil {
-    for i := 0; i < len(hosts); i++ {
-      if hosts[i] == nm {
-        hosts[i] = hosts[len(hosts)-1]
-        hosts = hosts[0 : len(hosts)-1]
-      }
+    case data := <-cd.remote_send:
+      wg.Add(1)
+      go func() {
+        cd.recv <- data
+        wg.Done()
+      }()
+
+    case <-cd.shutdown:
+      wg.Wait()
+      cd.shutdown <- struct{}{}
+      close(cd.recv)
+      close(cd.remote_recv)
     }
-    return
   }
+}
 
-  hosts = append(hosts, nm)
+func (hm *HostMock) Host(ping func([]byte) ([]byte, error), join func([]byte) error) {
+  hm.net.host_mutex.Lock()
+  defer hm.net.host_mutex.Unlock()
+  hm.ping = ping
+  hm.join = join
 }
 
 type networkMockRemoteHost struct {
@@ -133,107 +232,97 @@ type networkMockRemoteHost struct {
   id   int
 }
 
-func (nmrh networkMockRemoteHost) Data() []byte {
-  return nmrh.data
+func (hmrh networkMockRemoteHost) Data() []byte {
+  return hmrh.data
 }
-func (nmrh networkMockRemoteHost) Error() error {
-  return nmrh.err
+func (hmrh networkMockRemoteHost) Error() error {
+  return hmrh.err
 }
-func (nm *NetworkMock) Ping(data []byte) []RemoteHost {
-  host_mutex.Lock()
-  defer host_mutex.Unlock()
+func (hm *HostMock) Ping(data []byte) []RemoteHost {
+  hm.net.host_mutex.Lock()
+  defer hm.net.host_mutex.Unlock()
   var rhs []RemoteHost
-  for i := range hosts {
-    data, err := hosts[i].ping(data)
+  for i := range hm.net.hosts {
+    if hm.net.hosts[i].ping == nil {
+      continue
+    }
+    data, err := hm.net.hosts[i].ping(data)
     rh := networkMockRemoteHost{
       data: data,
       err:  err,
-      id:   hosts[i].id,
+      id:   hm.net.hosts[i].id,
     }
     rhs = append(rhs, rh)
   }
   return rhs
 }
 
-func (nm *NetworkMock) Join(remote RemoteHost, data []byte) ([]byte, error) {
+func (hm *HostMock) Join(remote RemoteHost, data []byte) (Conn, error) {
   rh, ok := remote.(networkMockRemoteHost)
   if !ok {
     return nil, errors.New("Specified a remote host of an unknown type.")
   }
-  if rh.id == nm.id {
+  if rh.id == hm.id {
     return nil, errors.New("Cannot connect a network to itself.")
   }
-  host_mutex.Lock()
-  defer host_mutex.Unlock()
-  for i := range hosts {
-    if hosts[i].id == rh.id {
-      for j := range hosts[i].connections {
-        if hosts[i].connections[j].id == nm.id {
+  for _, data := range hm.conn_data {
+    if data.remote_id == rh.id {
+      return nil, errors.New("Tried to connect to a network twice.")
+    }
+  }
+  hm.net.host_mutex.Lock()
+  defer hm.net.host_mutex.Unlock()
+  for i := range hm.net.hosts {
+    if hm.net.hosts[i].id == rh.id {
+      for _, data := range hm.net.hosts[i].conn_data {
+        if data.remote_id == hm.id {
           return nil, errors.New("Tried to connect to an already connected network.")
         }
       }
-      for j := range nm.connections {
-        if nm.connections[j].id == hosts[i].id {
-          return nil, errors.New("Tried to connect to a network twice.")
-        }
+      err := hm.net.hosts[i].join(data)
+      if err != nil {
+        return nil, err
       }
-      conn_a, conn_b := makeConnectionMockPair(nm, hosts[i])
-      nm.connections = append(nm.connections, conn_a)
-      hosts[i].connections = append(hosts[i].connections, conn_b)
-      return hosts[i].join(data)
+      c1, c2 := makeConnMockPair(hm, hm.net.hosts[i])
+      go func() {
+        hm.net.hosts[i].new_conns <- c2
+      }()
+      return c1, nil
     }
   }
 
   return nil, errors.New("Couldn't find the remote host.")
 }
 
-func (nm *NetworkMock) Send(batch EventBatch) {
-  host_mutex.Lock()
-  defer host_mutex.Unlock()
-  for i := range nm.connections {
-    nm.connections[i].send <- batch
-  }
+func (hm *HostMock) NewConns() <-chan Conn {
+  return hm.new_conns
 }
 
-func (nm *NetworkMock) routine() {
+func (hm *HostMock) routine() {
   for {
     select {
-    case conn_batch := <-nm.collect:
-      for _, conn := range nm.connections {
-        if conn.id == conn_batch.conn_id {
-          continue
-        }
-        conn.send <- conn_batch.batch
+    case <-hm.shutdown:
+      hm.net.host_mutex.Lock()
+      defer hm.net.host_mutex.Unlock()
+      for _, cd := range hm.conn_data {
+        cd.shutdown <- struct{}{}
       }
-      nm.incoming <- conn_batch.batch
-
-    case <-nm.shutdown:
-      for _, conn := range nm.connections {
-        close(conn.send)
-        close(conn.internal)
+      for i := range hm.net.hosts {
+        if hm.net.hosts[i] == hm {
+          hm.net.hosts[i] = hm.net.hosts[len(hm.net.hosts)-1]
+          hm.net.hosts = hm.net.hosts[0 : len(hm.net.hosts)-1]
+        }
       }
       return
     }
   }
-  for conn_batch := range nm.collect {
-    for _, conn := range nm.connections {
-      if conn.id == conn_batch.conn_id {
-        continue
-      }
-      conn.send <- conn_batch.batch
-    }
-  }
 }
 
-func (nm *NetworkMock) Receive() <-chan EventBatch {
-  return nm.incoming
+func (hm *HostMock) ActiveConnections() int {
+  return len(hm.conn_data)
 }
 
-func (nm *NetworkMock) ActiveConnections() int {
-  return len(nm.connections)
-}
-
-func (nm *NetworkMock) Shutdown() {
-  nm.Host(nil, nil)
-  nm.shutdown <- struct{}{}
+func (hm *HostMock) Shutdown() {
+  hm.Host(nil, nil)
+  hm.shutdown <- struct{}{}
 }
