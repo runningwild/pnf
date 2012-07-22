@@ -18,6 +18,8 @@ func NetworkMockSpec(c gospec.Context) {
     hm2 := core.NewHostMock(&net)
     c.Expect(hm1, Not(Equals), nil)
     c.Expect(hm2, Not(Equals), nil)
+    c.Expect(hm1.ActiveConnections(), Equals, 0)
+    c.Expect(hm2.ActiveConnections(), Equals, 0)
     ping_func := func(data []byte) ([]byte, error) {
       return []byte(fmt.Sprintf("Ping: %s", data)), nil
     }
@@ -28,12 +30,16 @@ func NetworkMockSpec(c gospec.Context) {
       return errors.New("fail!")
     }
     hm1.Host(ping_func, join_func)
+    c.Expect(hm1.ActiveConnections(), Equals, 0)
+    c.Expect(hm2.ActiveConnections(), Equals, 0)
     rhs := hm2.Ping([]byte("MONKEY"))
     c.Expect(len(rhs), Equals, 1)
     conn, err := hm2.Join(rhs[0], []byte("I am the monkey"))
     c.Expect(conn, Equals, nil)
     c.Expect(err, Not(Equals), nil)
     conn, err = hm2.Join(rhs[0], []byte("password"))
+    c.Expect(hm1.ActiveConnections(), Equals, 1)
+    c.Expect(hm2.ActiveConnections(), Equals, 1)
     c.Expect(conn, Not(Equals), nil)
     c.Expect(err, Equals, error(nil))
 

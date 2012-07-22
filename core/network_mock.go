@@ -140,8 +140,14 @@ func makeConnMockPair(hm1, hm2 *HostMock) (Conn, Conn) {
   go c1.routine()
   go c2.routine()
 
+  hm1.mutex.Lock()
+  hm2.mutex.Lock()
+  hm1.conn_data[&c1] = &cd1
+  hm2.conn_data[&c2] = &cd2
   go hm1.connRoutine(&cd1)
   go hm2.connRoutine(&cd2)
+  hm2.mutex.Unlock()
+  hm1.mutex.Unlock()
 
   return &c1, &c2
 }
@@ -172,11 +178,13 @@ type HostMock struct {
   ping func([]byte) ([]byte, error)
   join func([]byte) error
 
-  conn_data map[*ConnMock]hostConnMockData
+  conn_data map[*ConnMock]*hostConnMockData
 
   new_conns chan Conn
 
   shutdown chan struct{}
+
+  mutex sync.Mutex
 }
 
 func NewHostMock(net *NetworkMock) Network {
@@ -186,6 +194,7 @@ func NewHostMock(net *NetworkMock) Network {
   hm.net = net
   hm.id = hm.net.host_id
   hm.net.host_id++
+  hm.conn_data = make(map[*ConnMock]*hostConnMockData)
   hm.new_conns = make(chan Conn)
   hm.net.hosts = append(hm.net.hosts, &hm)
   go hm.routine()

@@ -24,6 +24,9 @@ type Conn interface {
   RecvData() <-chan []byte
   SendFrameBundle(FrameBundle)
   RecvFrameBundle() <-chan FrameBundle
+
+  // TODO: Must be able to tell if the connection died
+
   Close() error
 }
 
