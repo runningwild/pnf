@@ -49,8 +49,8 @@ func NetworkMockSpec(c gospec.Context) {
     fb := core.FrameBundle{}
     fb.Frame = 10
     fb.Bundle = core.EventBundle{
-      1: []core.Event{EventA{}},
-      2: nil,
+      1: core.AllEvents{Game: []core.Event{EventA{}}},
+      2: core.AllEvents{},
     }
     go func() {
       conn.SendFrameBundle(fb)
@@ -59,14 +59,15 @@ func NetworkMockSpec(c gospec.Context) {
     c.Expect(fb2.Frame, Equals, fb.Frame)
     c.Expect(len(fb2.Bundle), Equals, len(fb.Bundle))
     if len(fb2.Bundle) == len(fb.Bundle) {
-      c.Expect(len(fb2.Bundle[1]), Equals, 1)
-      if len(fb2.Bundle[1]) == 1 {
-        _, ok := fb2.Bundle[1][0].(EventA)
+      c.Expect(len(fb2.Bundle[1].Engine), Equals, 0)
+      c.Expect(len(fb2.Bundle[1].Game), Equals, 1)
+      if len(fb2.Bundle[1].Game) == 1 {
+        _, ok := fb2.Bundle[1].Game[0].(EventA)
         c.Expect(ok, Equals, true)
-        _, ok = fb2.Bundle[1][0].(EventB)
+        _, ok = fb2.Bundle[1].Game[0].(EventB)
         c.Expect(ok, Equals, false)
       }
-      c.Expect(len(fb2.Bundle[0]), Equals, 0)
+      c.Expect(len(fb2.Bundle[0].Game), Equals, 0)
     }
     conn.Close()
     conn2.Close()

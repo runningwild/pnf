@@ -54,7 +54,7 @@ func (b *Bundler) routine() {
         b.Local_bundles <- FrameBundle{
           Frame: current_frame,
           Bundle: EventBundle{
-            b.Params.Id: b.current_event_bundle,
+            b.Params.Id: AllEvents{Game: b.current_event_bundle},
           },
         }
         b.current_event_bundle = nil

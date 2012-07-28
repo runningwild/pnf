@@ -69,9 +69,11 @@ func CommunicatorSpec(c gospec.Context) {
       go func(n int) {
         bundle := core.FrameBundle{
           Bundle: core.EventBundle{
-            core.EngineId(n): []core.Event{
-              EventA{},
-              EventB{},
+            core.EngineId(n): core.AllEvents{
+              Game: []core.Event{
+                EventA{},
+                EventB{},
+              },
             },
           },
           Frame: core.StateFrame(n + 10),
@@ -94,12 +96,13 @@ func CommunicatorSpec(c gospec.Context) {
         events, ok := bundle.Bundle[core.EngineId(i)]
         c.Expect(ok, Equals, true)
         if ok {
-          c.Expect(len(events), Equals, 2)
-          _, ok_a := events[0].(EventA)
-          _, ok_b := events[1].(EventB)
-          c.Expect(ok_a, Equals, true)
-          c.Expect(ok_b, Equals, true)
-
+          c.Expect(len(events.Game), Equals, 2)
+          if len(events.Game) == 2 {
+            _, ok_a := events.Game[0].(EventA)
+            _, ok_b := events.Game[1].(EventB)
+            c.Expect(ok_a, Equals, true)
+            c.Expect(ok_b, Equals, true)
+          }
         }
       }
     }

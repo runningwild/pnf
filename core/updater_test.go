@@ -40,9 +40,11 @@ func UpdaterSpec(c gospec.Context) {
       local_bundles <- core.FrameBundle{
         Frame: cur_frame,
         Bundle: core.EventBundle{
-          params.Id: []core.Event{
-            EventA{int(cur_frame)},
-            EventB{fmt.Sprintf("%d", cur_frame)},
+          params.Id: core.AllEvents{
+            Game: []core.Event{
+              EventA{int(cur_frame)},
+              EventB{fmt.Sprintf("%d", cur_frame)},
+            },
           },
         },
       }

@@ -46,11 +46,12 @@ func BundlerSpec(c gospec.Context) {
       c.Expect(bundle.Frame, Equals, frame)
       events, ok := bundle.Bundle[params.Id]
       c.Assume(ok, Equals, true)
+      c.Expect(len(events.Engine), Equals, 0)
       if ok {
         if frame%2 == 0 {
-          c.Expect(len(events), Equals, 2)
+          c.Expect(len(events.Game), Equals, 2)
         } else {
-          c.Expect(len(events), Equals, 0)
+          c.Expect(len(events.Game), Equals, 0)
         }
       }
       if frame%2 == 0 {
@@ -60,8 +61,8 @@ func BundlerSpec(c gospec.Context) {
           if frame%4 != 0 {
             index_a = 1
           }
-          ea, aok := events[index_a].(*EventA)
-          eb, bok := events[(index_a+1)%2].(*EventB)
+          ea, aok := events.Game[index_a].(*EventA)
+          eb, bok := events.Game[(index_a+1)%2].(*EventB)
           c.Assume(aok, Equals, true)
           c.Assume(bok, Equals, true)
           c.Specify("checking event data", func() {

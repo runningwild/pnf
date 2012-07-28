@@ -25,7 +25,36 @@ type Engine struct {
 }
 
 type EngineEvent interface {
+  // EngineId of the engine that generated this event
+  Origin() EngineId
+
   Apply(*EngineInfo)
+}
+
+type EngineJoined struct {
+  Id     EngineId
+  Joiner EngineId
+}
+
+func (e EngineJoined) Origin() EngineId {
+  return e.Id
+}
+
+func (e EngineJoined) Apply(info *EngineInfo) {
+  info.Engines[e.Joiner] = true
+}
+
+type EngineDropped struct {
+  Id      EngineId
+  Dropper EngineId
+}
+
+func (e EngineDropped) Origin() EngineId {
+  return e.Id
+}
+
+func (e EngineDropped) Apply(info *EngineInfo) {
+  delete(info.Engines, e.Dropper)
 }
 
 // Contains information necessary to processing StateFrames.  The data in an
