@@ -14,13 +14,11 @@ func BundlerSpec(c gospec.Context) {
     params.Delay = 2
     params.Frame_ms = 5
     params.Max_frames = 25
-    completed_frame := make(chan core.StateFrame)
     bundles := make(chan core.FrameBundle)
     local_event := make(chan core.Event)
     var bundler core.Bundler
     bundler.Params = params
     bundler.Current_ms = 0
-    bundler.Completed_frame = completed_frame
     bundler.Local_bundles = bundles
     bundler.Local_event = local_event
     bundler.Time_delta = nil

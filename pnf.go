@@ -51,7 +51,6 @@ func NewLocalEngine(initial_state Game, frame_ms int64) *Engine {
   engine.local_event = local_event
   engine.bundler.Params = params
   engine.bundler.Current_ms = params.Frame_ms
-  engine.bundler.Completed_frame = completed_frame
   engine.bundler.Local_bundles = local_bundles
   engine.bundler.Local_event = local_event
   engine.bundler.Time_delta = nil

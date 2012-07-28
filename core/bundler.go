@@ -9,13 +9,21 @@ package core
 // will signal to the Bundler to pause if it needs to wait for other engines
 // to catch up.
 type Bundler struct {
-  Params          EngineParams
-  Ticker          Ticker
-  Local_event     <-chan Event
-  Time_delta      <-chan int64
-  Completed_frame <-chan StateFrame
-  Local_bundles   chan<- FrameBundle
-  Current_ms      int64
+  Params EngineParams
+  Ticker Ticker
+
+  // Used to receive events generated locally.
+  Local_event <-chan Event
+
+  // If this engine is out of sync with other engines the Auditor will tell us
+  // how much to adjust our clock by via this channel.
+  Time_delta <-chan int64
+
+  // Bundles of events generated locally.  These are packaged up and sent to
+  // the updater when they are ready.
+  Local_bundles chan<- FrameBundle
+
+  Current_ms int64
 
   shutdown             chan struct{}
   current_event_bundle []Event
@@ -29,7 +37,6 @@ func (b *Bundler) Start() {
 func (b *Bundler) routine() {
   b.Ticker.Start()
   current_frame := StateFrame(b.Current_ms / b.Params.Frame_ms)
-  completed := current_frame - 1
   for {
     select {
     case <-b.shutdown:
@@ -55,11 +62,6 @@ func (b *Bundler) routine() {
 
     case delta := <-b.Time_delta:
       b.Current_ms += delta
-
-    case newest_completed := <-b.Completed_frame:
-      if newest_completed > completed {
-        completed = newest_completed
-      }
     }
   }
 }
