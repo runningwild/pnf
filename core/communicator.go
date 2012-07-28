@@ -16,7 +16,7 @@ type Communicator struct {
   Broadcast_bundles <-chan FrameBundle
 
   // Remote bundles are eventually sent to the auditor through here.
-  Remote_bundles chan<- FrameBundle
+  Raw_remote_bundles chan<- FrameBundle
 
   // Bundles from remote hosts all come through here.
   remote_fan_in chan FrameBundle
@@ -69,7 +69,7 @@ func (c *Communicator) routine() {
       }
 
     case bundle := <-c.remote_fan_in:
-      c.Remote_bundles <- bundle
+      c.Raw_remote_bundles <- bundle
 
     case <-c.shutdown:
       for _, conn := range c.conns {
@@ -82,7 +82,7 @@ func (c *Communicator) routine() {
       }()
       c.active_conns.Wait()
       close(c.remote_fan_in)
-      close(c.Remote_bundles)
+      close(c.Raw_remote_bundles)
       return
     }
   }

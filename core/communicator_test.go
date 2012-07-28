@@ -27,9 +27,9 @@ func CommunicatorSpec(c gospec.Context) {
     var communicators []core.Communicator
     for i := range hms {
       c := core.Communicator{
-        Net:               hms[i],
-        Broadcast_bundles: make(chan core.FrameBundle),
-        Remote_bundles:    remotes[i],
+        Net:                hms[i],
+        Broadcast_bundles:  make(chan core.FrameBundle),
+        Raw_remote_bundles: remotes[i],
       }
       communicators = append(communicators, c)
       c.Start()

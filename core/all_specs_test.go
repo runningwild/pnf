@@ -54,5 +54,6 @@ func TestAllSpecs(t *testing.T) {
   r.AddSpec(BundlerSpec)
   r.AddSpec(UpdaterSpec)
   r.AddSpec(CommunicatorSpec)
+  r.AddSpec(AuditorSpec)
   gospec.MainGoTest(r, t)
 }

@@ -61,7 +61,7 @@ func NewLocalEngine(initial_state Game, frame_ms int64) *Engine {
   broadcast_bundles := make(chan core.FrameBundle)
   engine.updater.Local_bundles = local_bundles
   engine.updater.Broadcast_bundles = broadcast_bundles
-  engine.updater.Remote_bundles = nil
+  engine.updater.Raw_remote_bundles = nil
   data := core.FrameData{
     Bundle: nil,
     Game:   initial_state,
