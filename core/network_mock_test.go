@@ -68,5 +68,9 @@ func NetworkMockSpec(c gospec.Context) {
       }
       c.Expect(len(fb2.Bundle[0]), Equals, 0)
     }
+    conn.Close()
+    conn2.Close()
+    hm1.Shutdown()
+    hm2.Shutdown()
   })
 }

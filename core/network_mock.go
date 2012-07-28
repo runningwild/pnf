@@ -1,6 +1,7 @@
 package core
 
 import (
+  "fmt"
   "bytes"
   "sync"
   "errors"
@@ -39,6 +40,8 @@ func (c *ConnMock) routine() {
     send := false
     select {
     case <-c.shutdown:
+      close(c.recv_bytes)
+      close(c.recv_bundle)
       return
 
     case data := <-c.send_bytes:
@@ -94,6 +97,8 @@ func (c *ConnMock) RecvFrameBundle() <-chan FrameBundle {
   return c.recv_bundle
 }
 func (c *ConnMock) Close() error {
+  fmt.Printf("Close(%p): %v\n", c, c.shutdown)
+  c.shutdown <- struct{}{}
   c.shutdown <- struct{}{}
   return nil
 }
@@ -105,10 +110,12 @@ func makeConnMockPair(hm1, hm2 *HostMock) (Conn, Conn) {
   c1.send_bundle = make(chan FrameBundle)
   c1.recv_bytes = make(chan []byte)
   c1.send_bytes = make(chan []byte)
+  c1.shutdown = make(chan struct{})
   c2.recv_bundle = make(chan FrameBundle)
   c2.send_bundle = make(chan FrameBundle)
   c2.recv_bytes = make(chan []byte)
   c2.send_bytes = make(chan []byte)
+  c2.shutdown = make(chan struct{})
 
   send_1 := make(chan []byte)
   recv_1 := make(chan []byte)
@@ -126,7 +133,7 @@ func makeConnMockPair(hm1, hm2 *HostMock) (Conn, Conn) {
     recv:        recv_1,
     remote_send: send_2,
     remote_recv: recv_2,
-    shutdown:    make(chan struct{}),
+    shutdown:    c1.shutdown,
   }
   cd2 := hostConnMockData{
     remote_id:   hm1.id,
@@ -134,9 +141,10 @@ func makeConnMockPair(hm1, hm2 *HostMock) (Conn, Conn) {
     recv:        recv_2,
     remote_send: send_1,
     remote_recv: recv_1,
-    shutdown:    make(chan struct{}),
+    shutdown:    c2.shutdown,
   }
-
+  fmt.Printf("Open(%p): %v\n", c1.shutdown)
+  fmt.Printf("Open(%p): %v\n", c2.shutdown)
   go c1.routine()
   go c2.routine()
 
@@ -182,8 +190,6 @@ type HostMock struct {
 
   new_conns chan Conn
 
-  shutdown chan struct{}
-
   mutex sync.Mutex
 }
 
@@ -197,7 +203,6 @@ func NewHostMock(net *NetworkMock) Network {
   hm.conn_data = make(map[*ConnMock]*hostConnMockData)
   hm.new_conns = make(chan Conn)
   hm.net.hosts = append(hm.net.hosts, &hm)
-  go hm.routine()
   return &hm
 }
 
@@ -221,9 +226,7 @@ func (hm *HostMock) connRoutine(cd *hostConnMockData) {
 
     case <-cd.shutdown:
       wg.Wait()
-      cd.shutdown <- struct{}{}
-      close(cd.recv)
-      close(cd.remote_recv)
+      return
     }
   }
 }
@@ -307,31 +310,19 @@ func (hm *HostMock) NewConns() <-chan Conn {
   return hm.new_conns
 }
 
-func (hm *HostMock) routine() {
-  for {
-    select {
-    case <-hm.shutdown:
-      hm.net.host_mutex.Lock()
-      defer hm.net.host_mutex.Unlock()
-      for _, cd := range hm.conn_data {
-        cd.shutdown <- struct{}{}
-      }
-      for i := range hm.net.hosts {
-        if hm.net.hosts[i] == hm {
-          hm.net.hosts[i] = hm.net.hosts[len(hm.net.hosts)-1]
-          hm.net.hosts = hm.net.hosts[0 : len(hm.net.hosts)-1]
-        }
-      }
-      return
-    }
-  }
-}
-
 func (hm *HostMock) ActiveConnections() int {
   return len(hm.conn_data)
 }
 
 func (hm *HostMock) Shutdown() {
   hm.Host(nil, nil)
-  hm.shutdown <- struct{}{}
+  hm.net.host_mutex.Lock()
+  defer hm.net.host_mutex.Unlock()
+  for i := range hm.net.hosts {
+    if hm.net.hosts[i] == hm {
+      hm.net.hosts[i] = hm.net.hosts[len(hm.net.hosts)-1]
+      hm.net.hosts = hm.net.hosts[0 : len(hm.net.hosts)-1]
+      break
+    }
+  }
 }

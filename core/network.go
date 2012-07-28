@@ -22,7 +22,7 @@ type Heartbeat struct {
 type Conn interface {
   SendData([]byte)
   RecvData() <-chan []byte
-  SendFrameBundle(FrameBundle)
+  SendFrameBundle(bundle FrameBundle)
   RecvFrameBundle() <-chan FrameBundle
 
   // TODO: Must be able to tell if the connection died
