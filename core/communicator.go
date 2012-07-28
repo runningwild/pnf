@@ -1,5 +1,9 @@
 package core
 
+import (
+  "sync"
+)
+
 // The Communicator has the following tasks:
 // - It sends all local FrameBundles to all remote hosts.
 // - It collects all remote FrameBundles and sends them to tha auditor.
@@ -18,6 +22,9 @@ type Communicator struct {
   remote_fan_in chan FrameBundle
 
   conns []Conn
+
+  // Easy way to accurately count live connections
+  active_conns sync.WaitGroup
 
   shutdown chan struct{}
 }
@@ -44,6 +51,7 @@ func (c *Communicator) connRoutine(conn Conn) {
       c.remote_fan_in <- bundle
     }
   }
+  c.active_conns.Done()
   // TODO: conn died, probably want to do something here.
 }
 
@@ -52,6 +60,7 @@ func (c *Communicator) routine() {
     select {
     case conn := <-c.Net.NewConns():
       c.conns = append(c.conns, conn)
+      c.active_conns.Add(1)
       go c.connRoutine(conn)
 
     case bundle := <-c.Broadcast_bundles:
@@ -66,8 +75,15 @@ func (c *Communicator) routine() {
       for _, conn := range c.conns {
         conn.Close()
       }
+      // Clean out remote_fan_in so that our conn routines can terminate.
+      go func() {
+        for _ = range c.remote_fan_in {
+        }
+      }()
+      c.active_conns.Wait()
+      close(c.remote_fan_in)
       close(c.Remote_bundles)
-      break
+      return
     }
   }
 }

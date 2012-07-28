@@ -1,7 +1,6 @@
 package core
 
 import (
-  "fmt"
   "bytes"
   "sync"
   "errors"
@@ -97,7 +96,6 @@ func (c *ConnMock) RecvFrameBundle() <-chan FrameBundle {
   return c.recv_bundle
 }
 func (c *ConnMock) Close() error {
-  fmt.Printf("Close(%p): %v\n", c, c.shutdown)
   c.shutdown <- struct{}{}
   c.shutdown <- struct{}{}
   return nil
@@ -143,8 +141,6 @@ func makeConnMockPair(hm1, hm2 *HostMock) (Conn, Conn) {
     remote_recv: recv_1,
     shutdown:    c2.shutdown,
   }
-  fmt.Printf("Open(%p): %v\n", c1.shutdown)
-  fmt.Printf("Open(%p): %v\n", c2.shutdown)
   go c1.routine()
   go c2.routine()
 

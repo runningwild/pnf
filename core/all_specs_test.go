@@ -24,7 +24,7 @@ type EventB struct {
 }
 
 func init() {
-  gob.Register(EventA{})
+  gob.Register(EventB{})
 }
 func (e EventB) ApplyFirst(interface{}) {}
 func (e EventB) Apply(g interface{}) {
@@ -45,8 +45,6 @@ func (g *TestGame) Think() {
 }
 func (g *TestGame) Copy() interface{} {
   g2 := *g
-  println("Original: ", g.Thinks)
-  println("Copy: ", g2.Thinks)
   return &g2
 }
 
@@ -55,5 +53,6 @@ func TestAllSpecs(t *testing.T) {
   r.AddSpec(NetworkMockSpec)
   r.AddSpec(BundlerSpec)
   r.AddSpec(UpdaterSpec)
+  r.AddSpec(CommunicatorSpec)
   gospec.MainGoTest(r, t)
 }
