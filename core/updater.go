@@ -1,5 +1,9 @@
 package core
 
+import (
+  "fmt"
+)
+
 // The updater has the following tasks:
 // Receive Events from all engines, including localhost, store the events and
 // apply them to the Game as necessary.  If events show up late it will rewind
@@ -68,7 +72,18 @@ func (u *Updater) advance() {
   for frame := u.oldest_dirty_frame; frame <= u.global_frame; frame++ {
     data := u.data_window.Get(frame)
     data.Game = prev_data.Game.Copy().(Game)
+    data.Bundle.EachEngine(frame, func(id EngineId, events []EngineEvent) {
+      for _, event := range events {
+        fmt.Printf("Info: %v\n", data.Info)
+        event.Apply(&data.Info)
+        fmt.Printf("Info: %v\n", data.Info)
+      }
+    })
     data.Bundle.Each(frame, func(id EngineId, events []Event) {
+      if _, ok := data.Info.Engines[id]; !ok {
+        // TODO: What on earth to do about this?
+        return
+      }
       for _, event := range events {
         event.Apply(data.Game)
       }
@@ -84,7 +99,13 @@ func (u *Updater) advance() {
   for u.data_window.Start() < u.global_frame {
     prev_info := u.data_window.Get(u.data_window.Start() + 1).Info
     data := u.data_window.Get(u.data_window.Start() + 1)
-    if len(data.Bundle) == len(prev_info.Engines) {
+    all_present := true
+    for id := range prev_info.Engines {
+      if _, ok := data.Bundle[id]; !ok {
+        all_present = false
+      }
+    }
+    if all_present {
       u.data_window.Advance()
     } else {
       break

@@ -26,7 +26,10 @@ func UpdaterSpec(c gospec.Context) {
       Bundle: nil,
       Game:   &TestGame{},
       Info: core.EngineInfo{
-        Engines: map[core.EngineId]bool{params.Id: true},
+        Engines: map[core.EngineId]bool{
+          params.Id:     true,
+          params.Id + 1: true,
+        },
       },
     }
     var start_frame core.StateFrame = 10
@@ -35,24 +38,132 @@ func UpdaterSpec(c gospec.Context) {
       for _ = range broadcast_bundles {
       }
     }()
-    var cur_frame core.StateFrame
-    for cur_frame = start_frame + 1; cur_frame <= start_frame+5; cur_frame++ {
+    defer close(broadcast_bundles)
+    cur_frame := start_frame + 1
+    c.Specify("Local game Events are applied properly.", func() {
+      for cur_frame = start_frame + 1; cur_frame <= start_frame+5; cur_frame++ {
+        local_bundles <- core.FrameBundle{
+          Frame: cur_frame,
+          Bundle: core.EventBundle{
+            params.Id: core.AllEvents{
+              Game: []core.Event{
+                EventA{2},
+                EventB{fmt.Sprintf("%d", cur_frame)},
+              },
+            },
+            params.Id + 1: core.AllEvents{
+              Game: []core.Event{
+                EventA{1},
+                EventB{fmt.Sprintf("%d", cur_frame)},
+              },
+            },
+          },
+        }
+      }
+      state := updater.RequestFinalGameState()
+      c.Expect(state, Not(Equals), nil)
+      tg := state.(*TestGame)
+      c.Expect(tg.Thinks, Equals, 5)
+      c.Expect(tg.A, Equals, 15)
+      c.Expect(tg.B, Equals, fmt.Sprintf("%d", cur_frame-1))
+    })
+
+    // Same test as above, but one of the engine's events come through the
+    // remote_bundles channel.
+    c.Specify("Remote game Events are applied properly.", func() {
+      for cur_frame = start_frame + 1; cur_frame <= start_frame+5; cur_frame++ {
+        local_bundles <- core.FrameBundle{
+          Frame: cur_frame,
+          Bundle: core.EventBundle{
+            params.Id: core.AllEvents{
+              Game: []core.Event{
+                EventA{2},
+                EventB{fmt.Sprintf("%d", cur_frame)},
+              },
+            },
+          },
+        }
+        remote_bundles <- core.FrameBundle{
+          Frame: cur_frame,
+          Bundle: core.EventBundle{
+            params.Id + 1: core.AllEvents{
+              Game: []core.Event{
+                EventA{},
+                EventB{fmt.Sprintf("%d", cur_frame)},
+              },
+            },
+          },
+        }
+      }
+      state := updater.RequestFinalGameState()
+      c.Expect(state, Not(Equals), nil)
+      tg := state.(*TestGame)
+      c.Expect(tg.Thinks, Equals, 5)
+      c.Expect(tg.A, Equals, 15)
+      c.Expect(tg.B, Equals, fmt.Sprintf("%d", cur_frame-1))
+    })
+
+    // Similar test as above but we drop and rejoin one of the engines.
+    c.Specify("Engine Events are applied properly.", func() {
       local_bundles <- core.FrameBundle{
         Frame: cur_frame,
         Bundle: core.EventBundle{
           params.Id: core.AllEvents{
+            Engine: []core.EngineEvent{
+              core.EngineDropped{params.Id + 1},
+            },
             Game: []core.Event{
-              EventA{int(cur_frame)},
-              EventB{fmt.Sprintf("%d", cur_frame)},
+              EventA{1},
+            },
+          },
+          params.Id + 1: core.AllEvents{
+            Game: []core.Event{
+              EventA{1},
             },
           },
         },
       }
-    }
-    state := updater.RequestFinalGameState()
-    c.Expect(state, Not(Equals), nil)
-    tg := state.(*TestGame)
-    c.Expect(tg.Thinks, Equals, 5)
-    c.Expect(tg.B, Equals, fmt.Sprintf("%d", cur_frame-1))
+
+      local_bundles <- core.FrameBundle{
+        Frame: cur_frame + 1,
+        Bundle: core.EventBundle{
+          params.Id: core.AllEvents{
+            Engine: []core.EngineEvent{
+              core.EngineJoined{params.Id + 1},
+            },
+            Game: []core.Event{
+              EventA{1},
+            },
+          },
+          params.Id + 1: core.AllEvents{ // These events should not get applied
+            Game: []core.Event{
+              EventA{1},
+            },
+          },
+        },
+      }
+
+      local_bundles <- core.FrameBundle{
+        Frame: cur_frame + 2,
+        Bundle: core.EventBundle{
+          params.Id: core.AllEvents{
+            Game: []core.Event{
+              EventA{1},
+            },
+          },
+          params.Id + 1: core.AllEvents{ // These events should get applied
+            Game: []core.Event{
+              EventA{1},
+            },
+          },
+        },
+      }
+
+      state := updater.RequestFinalGameState()
+      c.Expect(state, Not(Equals), nil)
+      tg := state.(*TestGame)
+      c.Expect(tg.Thinks, Equals, 3)
+      c.Expect(tg.A, Equals, 5)
+    })
   })
 }

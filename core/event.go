@@ -57,17 +57,23 @@ func (fb EventBundle) Each(frame StateFrame, f func(EngineId, []Event)) {
   })
 }
 
+func (fb EventBundle) EachEngine(frame StateFrame, f func(EngineId, []EngineEvent)) {
+  fb.each(frame, func(id EngineId, all AllEvents) {
+    f(id, all.Engine)
+  })
+}
+
 func (fb EventBundle) each(frame StateFrame, f func(EngineId, AllEvents)) {
   max := EngineId(-1)
-  max_max := EngineId(-1)
   for i := 0; i < len(fb); i++ {
+    cur := EngineId(-1)
     for k := range fb {
-      if k > max && (k < max_max || max_max == -1) {
-        max = k
+      if k > max && (k < cur || cur == -1) {
+        cur = k
       }
     }
-    max_max = max
-    f(max, fb[max])
+    max = cur
+    f(max, fb[cur])
   }
 }
 

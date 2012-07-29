@@ -1,5 +1,9 @@
 package core
 
+import (
+  "encoding/gob"
+)
+
 type EngineId int64
 type StateFrame int
 
@@ -25,36 +29,28 @@ type Engine struct {
 }
 
 type EngineEvent interface {
-  // EngineId of the engine that generated this event
-  Origin() EngineId
-
   Apply(*EngineInfo)
 }
 
-type EngineJoined struct {
-  Id     EngineId
-  Joiner EngineId
+func init() {
+  gob.Register(EngineJoined{})
+  gob.Register(EngineDropped{})
 }
 
-func (e EngineJoined) Origin() EngineId {
-  return e.Id
+type EngineJoined struct {
+  Id EngineId
 }
 
 func (e EngineJoined) Apply(info *EngineInfo) {
-  info.Engines[e.Joiner] = true
+  info.Engines[e.Id] = true
 }
 
 type EngineDropped struct {
-  Id      EngineId
-  Dropper EngineId
-}
-
-func (e EngineDropped) Origin() EngineId {
-  return e.Id
+  Id EngineId
 }
 
 func (e EngineDropped) Apply(info *EngineInfo) {
-  delete(info.Engines, e.Dropper)
+  delete(info.Engines, e.Id)
 }
 
 // Contains information necessary to processing StateFrames.  The data in an
