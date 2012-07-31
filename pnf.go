@@ -45,7 +45,6 @@ func NewLocalEngine(initial_state Game, frame_ms int64) *Engine {
   params.Delay = 1
   params.Frame_ms = frame_ms
   params.Max_frames = 2
-  completed_frame := make(chan core.StateFrame)
   local_bundles := make(chan core.FrameBundle)
   local_event := make(chan core.Event)
   engine.local_event = local_event
@@ -61,7 +60,7 @@ func NewLocalEngine(initial_state Game, frame_ms int64) *Engine {
   broadcast_bundles := make(chan core.FrameBundle)
   engine.updater.Local_bundles = local_bundles
   engine.updater.Broadcast_bundles = broadcast_bundles
-  engine.updater.Raw_remote_bundles = nil
+  engine.updater.Remote_bundles = nil
   data := core.FrameData{
     Bundle: nil,
     Game:   initial_state,
