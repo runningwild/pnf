@@ -88,7 +88,7 @@ func UpdaterSpec(c gospec.Context) {
           Bundle: core.EventBundle{
             params.Id + 1: core.AllEvents{
               Game: []core.Event{
-                EventA{},
+                EventA{1},
                 EventB{fmt.Sprintf("%d", cur_frame)},
               },
             },
