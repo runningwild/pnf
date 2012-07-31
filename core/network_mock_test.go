@@ -46,6 +46,10 @@ func NetworkMockSpec(c gospec.Context) {
     // We've connected, so hm1 should be able to find a new connection.
     conn2 := <-hm1.NewConns()
     c.Expect(conn2, Not(Equals), nil)
+
+    // a connection pair from a mock network should share the same Id()
+    c.Expect(conn.Id(), Equals, conn2.Id())
+
     fb := core.FrameBundle{}
     fb.Frame = 10
     fb.Bundle = core.EventBundle{

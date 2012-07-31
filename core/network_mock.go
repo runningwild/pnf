@@ -15,6 +15,7 @@ type NetworkMock struct {
   host_mutex sync.Mutex
   hosts      []*HostMock
   host_id    int
+  pair_id    int
 }
 
 type ConnMock struct {
@@ -25,6 +26,8 @@ type ConnMock struct {
   // typed data, before and after it travels through recv
   send_bytes, recv_bytes   chan []byte
   send_bundle, recv_bundle chan FrameBundle
+
+  pair_id int
 
   shutdown chan struct{}
 }
@@ -95,6 +98,9 @@ func (c *ConnMock) SendFrameBundle(frame_bundle FrameBundle) {
 func (c *ConnMock) RecvFrameBundle() <-chan FrameBundle {
   return c.recv_bundle
 }
+func (c *ConnMock) Id() int {
+  return c.pair_id
+}
 func (c *ConnMock) Close() error {
   c.shutdown <- struct{}{}
   c.shutdown <- struct{}{}
@@ -102,18 +108,25 @@ func (c *ConnMock) Close() error {
 }
 
 func makeConnMockPair(hm1, hm2 *HostMock) (Conn, Conn) {
-  var c1, c2 ConnMock
+  pair_id := hm1.net.pair_id
+  hm1.net.pair_id++
 
-  c1.recv_bundle = make(chan FrameBundle)
-  c1.send_bundle = make(chan FrameBundle)
-  c1.recv_bytes = make(chan []byte)
-  c1.send_bytes = make(chan []byte)
-  c1.shutdown = make(chan struct{})
-  c2.recv_bundle = make(chan FrameBundle)
-  c2.send_bundle = make(chan FrameBundle)
-  c2.recv_bytes = make(chan []byte)
-  c2.send_bytes = make(chan []byte)
-  c2.shutdown = make(chan struct{})
+  c1 := ConnMock{
+    pair_id:     pair_id,
+    recv_bundle: make(chan FrameBundle),
+    send_bundle: make(chan FrameBundle),
+    recv_bytes:  make(chan []byte),
+    send_bytes:  make(chan []byte),
+    shutdown:    make(chan struct{}),
+  }
+  c2 := ConnMock{
+    pair_id:     pair_id,
+    recv_bundle: make(chan FrameBundle),
+    send_bundle: make(chan FrameBundle),
+    recv_bytes:  make(chan []byte),
+    send_bytes:  make(chan []byte),
+    shutdown:    make(chan struct{}),
+  }
 
   send_1 := make(chan []byte)
   recv_1 := make(chan []byte)
@@ -141,6 +154,7 @@ func makeConnMockPair(hm1, hm2 *HostMock) (Conn, Conn) {
     remote_recv: recv_1,
     shutdown:    c2.shutdown,
   }
+
   go c1.routine()
   go c2.routine()
 

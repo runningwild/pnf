@@ -25,6 +25,12 @@ type Conn interface {
   SendFrameBundle(bundle FrameBundle)
   RecvFrameBundle() <-chan FrameBundle
 
+  // Primarily for testing.  Returns an id that is unique among all connection
+  // pairs.  For mock networks and mock conns we can guarantee that both
+  // connections in a pair will have the same Id, which can help sometimes
+  // with debugging.
+  Id() int
+
   // TODO: Must be able to tell if the connection died
 
   Close() error
