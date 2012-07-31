@@ -4,6 +4,11 @@ import (
   "sync"
 )
 
+type RemoteFrameBundle struct {
+  bundle FrameBundle
+  conn   Conn
+}
+
 // The Communicator has the following tasks:
 // - It sends all local FrameBundles to all remote hosts.
 // - It collects all remote FrameBundles and sends them to tha auditor.
@@ -18,8 +23,12 @@ type Communicator struct {
   // Remote bundles are eventually sent to the auditor through here.
   Raw_remote_bundles chan<- FrameBundle
 
+  // This is necessary for starting up a client engine.  A host can safely
+  // leave this as nil.
+  Host_conn Conn
+
   // Bundles from remote hosts all come through here.
-  remote_fan_in chan FrameBundle
+  remote_fan_in chan RemoteFrameBundle
 
   conns []Conn
 
@@ -30,15 +39,22 @@ type Communicator struct {
 }
 
 func (c *Communicator) Start() {
-  c.remote_fan_in = make(chan FrameBundle)
+  c.remote_fan_in = make(chan RemoteFrameBundle)
   c.shutdown = make(chan struct{})
+  if c.Host_conn != nil {
+    c.conns = append(c.conns, c.Host_conn)
+    c.active_conns.Add(1)
+    go c.connRoutine(c.Host_conn)
+  }
   go c.routine()
 }
 
 func (c *Communicator) Shutdown() {
   c.shutdown <- struct{}{}
 }
-
+func (c *Communicator) NumConns() int {
+  return len(c.conns)
+}
 func (c *Communicator) connRoutine(conn Conn) {
   alive := true
   for alive {
@@ -48,7 +64,7 @@ func (c *Communicator) connRoutine(conn Conn) {
 
     case bundle, ok := <-conn.RecvFrameBundle():
       alive = alive && ok
-      c.remote_fan_in <- bundle
+      c.remote_fan_in <- RemoteFrameBundle{bundle, conn}
     }
   }
   c.active_conns.Done()
@@ -62,14 +78,22 @@ func (c *Communicator) routine() {
       c.conns = append(c.conns, conn)
       c.active_conns.Add(1)
       go c.connRoutine(conn)
+      // TODO:
+      // Send a complete game state and all events pending on all frames
+      // Send it all new events just like any other connection
 
     case bundle := <-c.Broadcast_bundles:
       for _, conn := range c.conns {
-        conn.SendFrameBundle(bundle)
+        go conn.SendFrameBundle(bundle)
       }
 
-    case bundle := <-c.remote_fan_in:
-      c.Raw_remote_bundles <- bundle
+    case remote_bundle := <-c.remote_fan_in:
+      c.Raw_remote_bundles <- remote_bundle.bundle
+      for _, conn := range c.conns {
+        if conn != remote_bundle.conn {
+          go conn.SendFrameBundle(remote_bundle.bundle)
+        }
+      }
 
     case <-c.shutdown:
       for _, conn := range c.conns {
