@@ -23,6 +23,11 @@ type Communicator struct {
   // Remote bundles are eventually sent to the auditor through here.
   Raw_remote_bundles chan<- FrameBundle
 
+  // When the Updater successfully bootstraps a new Conn it will send it to
+  // the Communicator through here.  An engine that will no host can safely
+  // leave this as nil.
+  Joined_conns <-chan Conn
+
   // This is necessary for starting up a client engine.  A host can safely
   // leave this as nil.
   Host_conn Conn
@@ -74,13 +79,10 @@ func (c *Communicator) connRoutine(conn Conn) {
 func (c *Communicator) routine() {
   for {
     select {
-    case conn := <-c.Net.NewConns():
+    case conn := <-c.Joined_conns:
       c.conns = append(c.conns, conn)
       c.active_conns.Add(1)
       go c.connRoutine(conn)
-      // TODO:
-      // Send a complete game state and all events pending on all frames
-      // Send it all new events just like any other connection
 
     case bundle := <-c.Broadcast_bundles:
       for _, conn := range c.conns {
@@ -88,7 +90,9 @@ func (c *Communicator) routine() {
       }
 
     case remote_bundle := <-c.remote_fan_in:
-      c.Raw_remote_bundles <- remote_bundle.bundle
+      go func() {
+        c.Raw_remote_bundles <- remote_bundle.bundle
+      }()
       for _, conn := range c.conns {
         if conn != remote_bundle.conn {
           go conn.SendFrameBundle(remote_bundle.bundle)
