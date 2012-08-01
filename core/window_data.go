@@ -46,5 +46,7 @@ func (w *DataWindow) End() StateFrame {
 
 func (w *DataWindow) Advance() {
   w.first++
+  var V FrameData
+  w.data[w.start] = V
   w.start = (w.start + 1) % (len(w.data))
 }
