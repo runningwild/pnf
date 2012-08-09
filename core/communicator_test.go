@@ -47,26 +47,17 @@ func CommunicatorSpec(c gospec.Context) {
       conns = append(conns, conn)
     }
 
-    joined_conns := make(chan core.Conn)
     var communicators []*core.Communicator
     for i := range hms {
-      jc := joined_conns
-      if i != 0 {
-        jc = nil
-      }
       c := core.Communicator{
         Net:                hms[i],
         Broadcast_bundles:  make(chan core.FrameBundle),
         Raw_remote_bundles: remotes[i],
-        Joined_conns:       jc,
         Host_conn:          conns[i],
       }
       communicators = append(communicators, &c)
       c.Start()
       defer c.Shutdown()
-    }
-    for i := 1; i < len(hms); i++ {
-      joined_conns <- <-hms[0].NewConns()
     }
 
     // We will send a different FrameBundle from each non-host communicator
