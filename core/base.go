@@ -1,8 +1,10 @@
 package core
 
 import (
+  "bytes"
   "crypto/rand"
   "math/big"
+  "encoding/gob"
 )
 
 // Creates a random id that will be unique among all other engines with high
@@ -15,4 +17,14 @@ func RandomId() int64 {
     panic(err)
   }
   return v.Int64()
+}
+
+func QuickGobEncode(a interface{}) ([]byte, error) {
+  buf := bytes.NewBuffer(nil)
+  err := gob.NewEncoder(buf).Encode(a)
+  return buf.Bytes(), err
+}
+
+func QuickGobDecode(a interface{}, data []byte) error {
+  return gob.NewDecoder(bytes.NewBuffer(data)).Decode(a)
 }
