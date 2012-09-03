@@ -1,9 +1,9 @@
 package core_test
 
 import (
-  "runningwild/pnf/core"
   "github.com/orfjackal/gospec/src/gospec"
   . "github.com/orfjackal/gospec/src/gospec"
+  "runningwild/pnf/core"
 )
 
 func CommunicatorSpec(c gospec.Context) {
@@ -11,7 +11,7 @@ func CommunicatorSpec(c gospec.Context) {
     // Set up a simple star graph, everyone connects to Communicator 0.
     var net core.NetworkMock
     var hms []core.Network
-    for i := 0; i < 35; i++ {
+    for i := 0; i < 4; i++ {
       hms = append(hms, core.NewHostMock(&net))
     }
 

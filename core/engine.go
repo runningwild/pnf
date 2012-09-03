@@ -5,7 +5,7 @@ import (
 )
 
 type EngineId int64
-type StateFrame int
+type StateFrame int32
 
 type EngineParams struct {
   // Unique Id of this Engine

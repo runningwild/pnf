@@ -23,13 +23,20 @@ type Bundler struct {
   // the updater when they are ready.
   Local_bundles chan<- FrameBundle
 
+  // When another part of the engine needs to apply an EngineEvent these
+  // channels are used to apply it and also let that component know what frame
+  // the event will be applied on.
+  local_engine_event chan EngineEvent
+  engine_event_frame chan StateFrame
+
   Current_ms int64
 
-  shutdown             chan struct{}
-  current_event_bundle []Event
+  shutdown chan struct{}
 }
 
 func (b *Bundler) Start() {
+  b.local_engine_event = make(chan EngineEvent)
+  b.engine_event_frame = make(chan StateFrame)
   b.shutdown = make(chan struct{})
   go b.routine()
 }
@@ -37,6 +44,8 @@ func (b *Bundler) Start() {
 func (b *Bundler) routine() {
   b.Ticker.Start()
   current_frame := StateFrame(b.Current_ms / b.Params.Frame_ms)
+  var current_events []Event
+  var current_engine_events []EngineEvent
   for {
     select {
     case <-b.shutdown:
@@ -45,7 +54,11 @@ func (b *Bundler) routine() {
       return
 
     case event := <-b.Local_event:
-      b.current_event_bundle = append(b.current_event_bundle, event)
+      current_events = append(current_events, event)
+
+    case engine_event := <-b.local_engine_event:
+      b.engine_event_frame <- current_frame
+      current_engine_events = append(current_engine_events, engine_event)
 
     case <-b.Ticker.Chan():
       b.Current_ms++
@@ -54,16 +67,25 @@ func (b *Bundler) routine() {
         b.Local_bundles <- FrameBundle{
           Frame: current_frame,
           Bundle: EventBundle{
-            b.Params.Id: AllEvents{Game: b.current_event_bundle},
+            b.Params.Id: AllEvents{
+              Game:   current_events,
+              Engine: current_engine_events,
+            },
           },
         }
-        b.current_event_bundle = nil
+        current_events = nil
+        current_engine_events = nil
       }
 
     case delta := <-b.Time_delta:
       b.Current_ms += delta
     }
   }
+}
+
+func (b *Bundler) applyEngineEvent(event EngineEvent) StateFrame {
+  b.local_engine_event <- event
+  return <-b.engine_event_frame
 }
 
 func (b *Bundler) Shutdown() {

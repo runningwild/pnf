@@ -1,5 +1,12 @@
 package core
 
+// Used for bootstrapping
+type BootstrapFrame struct {
+  Frame StateFrame
+  Game  Game
+  Info  EngineInfo
+}
+
 // The updater has the following tasks:
 // Receive Events from all engines, including localhost, store the events and
 // apply them to the Game as necessary.  If events show up late it will rewind
@@ -19,6 +26,11 @@ type Updater struct {
   // come in any order so it is the updater's responsibility to make sure that
   // they are applied properly.
   Remote_bundles <-chan FrameBundle
+
+  // Whenever a frame is completed it is sent to the Communicator through here
+  // to be used for bootstrapping new connections.  An engine that does not
+  // want to host can safely leave this as nil.
+  Bootstrap_frames chan<- BootstrapFrame
 
   // Used to signal that the current Game state has been requested.  True
   // indicates that we should send the most recent complete Game state, false
@@ -101,6 +113,14 @@ func (u *Updater) advance() {
     }
     if all_present {
       u.data_window.Advance()
+      if u.Bootstrap_frames != nil {
+        bootstrap_frame := BootstrapFrame{
+          Frame: u.data_window.Start(),
+          Game:  data.Game,
+          Info:  data.Info,
+        }
+        u.Bootstrap_frames <- bootstrap_frame
+      }
     } else {
       break
     }
