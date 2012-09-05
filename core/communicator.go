@@ -78,36 +78,45 @@ func (c *Communicator) Start() {
 // been established this function will handle the initial bootstrap.  If
 // successful the BootstrapFrame that is returned should be passed to
 // Updater.Bootstrap() and all other components can be Start()ed.
-func (c *Communicator) Join(conn Conn) (*BootstrapFrame, error) {
+func (c *Communicator) Join(conn Conn) (*BootstrapFrame, EngineId, error) {
   // TODO: Should have a timeout on here, maybe 10 seconds?
   data := <-conn.RecvData()
   var initial bootstrapInitialData
   err := QuickGobDecode(&initial, data)
   if err != nil {
     conn.Close()
-    return nil, err
+    return nil, 0, err
   }
   var remote_bundles []FrameBundle
   for {
     select {
     case bundle := <-conn.RecvFrameBundle():
       if bundle.Frame >= initial.Horizon {
+        println("Saving Frame: ", bundle.Frame)
         remote_bundles = append(remote_bundles, bundle)
       }
+
     case data := <-conn.RecvData():
       var boot BootstrapFrame
       err = QuickGobDecode(&boot, data)
       if err != nil {
         conn.Close()
-        return nil, err
+        return nil, 0, err
       }
+      data, err := QuickGobEncode(true)
+      if err != nil {
+        conn.Close()
+        return nil, 0, err
+      }
+      conn.SendData(data)
+
       go func() {
         for _, bundle := range remote_bundles {
           c.Raw_remote_bundles <- bundle
         }
       }()
       c.host_conn = conn
-      return &boot, nil
+      return &boot, initial.Id, nil
     }
   }
   panic("Unreachable")
@@ -138,9 +147,9 @@ func (c *Communicator) bootstrapRoutine(conn Conn, id EngineId) {
     conn.Close()
     return
   }
-  var ready StateFrame
+  var ready bool
   err := QuickGobDecode(&ready, data)
-  if err != nil {
+  if err != nil || !ready {
     // TODO: LOG this error
     conn.Close()
   } else {
@@ -188,11 +197,11 @@ func (c *Communicator) routine() {
       }
       conn.SendData(data)
       c.conns = append(c.conns, conn)
-      strap := bootstrap{
+      boot := bootstrap{
         conn:  conn,
-        start: c.horizon,
+        start: c.horizon + 1,
       }
-      c.bootstraps = append(c.bootstraps, strap)
+      c.bootstraps = append(c.bootstraps, boot)
       c.active_conns.Add(1)
       go c.bootstrapRoutine(conn, initial.Id)
 
@@ -200,6 +209,7 @@ func (c *Communicator) routine() {
       if bundle.Frame > c.horizon {
         c.horizon = bundle.Frame
       }
+      println("Broadcast: ", bundle.Frame, " to ", len(c.conns), " conns")
       for _, conn := range c.conns {
         go conn.SendFrameBundle(bundle)
       }
@@ -222,6 +232,7 @@ func (c *Communicator) routine() {
         if boostrap_frame.Frame == boot.start {
           data, err := QuickGobEncode(boostrap_frame)
           if err != nil {
+            panic(err.Error())
             // TODO: LOG error
             boot.conn.Close()
             continue

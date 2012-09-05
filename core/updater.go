@@ -74,10 +74,24 @@ func (u *Updater) Start(frame StateFrame, data FrameData) {
 }
 
 func (u *Updater) Bootstrap(boot *BootstrapFrame) {
-  u.Start(boot.Frame, FrameData{
-    Game: boot.Game,
-    Info: boot.Info,
+  u.data_window = NewDataWindow(u.Params.Max_frames+1, boot.Frame-1)
+  u.data_window.Set(boot.Frame-1, FrameData{
+    Bundle: make(EventBundle),
+    Game:   boot.Game,
+    Info:   EngineInfo{}, // This will let us advance past it
   })
+  u.data_window.Set(boot.Frame, FrameData{
+    Bundle: make(EventBundle),
+    Game:   boot.Game,
+    Info:   boot.Info,
+  })
+  u.local_frame = boot.Frame
+  u.global_frame = boot.Frame
+  u.oldest_dirty_frame = boot.Frame + 1
+  println("Setting oldest dirty frame to ", u.oldest_dirty_frame)
+  u.request_state = make(chan bool)
+  u.current_state = make(chan Game)
+  go u.routine()
 }
 
 // Does a rethink on every dirty frame and then advances data_window as much
@@ -90,6 +104,7 @@ func (u *Updater) advance() {
     data.Bundle.EachEngine(frame, func(id EngineId, events []EngineEvent) {
       for _, event := range events {
         event.Apply(&data.Info)
+        println("Applied engine event on frame ", frame)
       }
     })
     data.Bundle.Each(frame, func(id EngineId, events []Event) {
@@ -159,6 +174,7 @@ func (u *Updater) routine() {
         u.global_frame = u.local_frame
       }
       if u.local_frame < u.oldest_dirty_frame {
+        println(u.Params.Id, "Reset oldest from ", u.oldest_dirty_frame, " to ", u.local_frame)
         u.oldest_dirty_frame = u.local_frame
       }
       data := u.data_window.Get(local_bundle.Frame)
@@ -175,6 +191,7 @@ func (u *Updater) routine() {
         u.global_frame = remote_bundle.Frame
       }
       if remote_bundle.Frame < u.oldest_dirty_frame {
+        println(u.Params.Id, "Reset oldest from ", u.oldest_dirty_frame, " to ", remote_bundle.Frame)
         u.oldest_dirty_frame = remote_bundle.Frame
       }
       // TODO: Check that the remote bundle is in bounds

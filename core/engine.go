@@ -57,6 +57,8 @@ func (e EngineDropped) Apply(info *EngineInfo) {
 // EngineInfo can also be modified, like the GameState, but can only be done
 // by the host.
 type EngineInfo struct {
+  // TODO: I think I'm changing this so that the set Engines is the set of
+  // engines that should supply events on this frame.
   // Set of all known engines on this StateFrame.  Events must be received
   // from each known engine on the next frame for the next frame to complete.
   // This means that no events are expected from an engine on the first frame

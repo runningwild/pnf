@@ -32,6 +32,10 @@ func (e EventB) Apply(g interface{}) {
 }
 func (e EventB) ApplyFinal(interface{}) {}
 
+func init() {
+  gob.Register(&TestGame{})
+}
+
 type TestGame struct {
   A      int
   B      string
@@ -50,12 +54,12 @@ func (g *TestGame) Copy() interface{} {
 
 func TestAllSpecs(t *testing.T) {
   r := gospec.NewRunner()
-  r.AddSpec(NetworkMockSpec)
-  r.AddSpec(BundlerSpec)
-  r.AddSpec(UpdaterSpec)
-  r.AddSpec(CommunicatorSpec)
-  r.AddSpec(AuditorSpec)
-  r.AddSpec(BaseSpec)
+  // r.AddSpec(NetworkMockSpec)
+  // r.AddSpec(BundlerSpec)
+  // r.AddSpec(UpdaterSpec)
+  // r.AddSpec(CommunicatorSpec)
+  // r.AddSpec(AuditorSpec)
+  // r.AddSpec(BaseSpec)
   r.AddSpec(EngineSpec)
   gospec.MainGoTest(r, t)
 }
