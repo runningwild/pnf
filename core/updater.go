@@ -73,6 +73,13 @@ func (u *Updater) Start(frame StateFrame, data FrameData) {
   go u.routine()
 }
 
+func (u *Updater) Bootstrap(boot *BootstrapFrame) {
+  u.Start(boot.Frame, FrameData{
+    Game: boot.Game,
+    Info: boot.Info,
+  })
+}
+
 // Does a rethink on every dirty frame and then advances data_window as much
 // as possible.
 func (u *Updater) advance() {

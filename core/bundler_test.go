@@ -2,9 +2,9 @@ package core_test
 
 import (
   "fmt"
-  "runningwild/pnf/core"
   "github.com/orfjackal/gospec/src/gospec"
   . "github.com/orfjackal/gospec/src/gospec"
+  "runningwild/pnf/core"
 )
 
 func BundlerSpec(c gospec.Context) {
@@ -18,7 +18,6 @@ func BundlerSpec(c gospec.Context) {
     local_event := make(chan core.Event)
     var bundler core.Bundler
     bundler.Params = params
-    bundler.Current_ms = 0
     bundler.Local_bundles = bundles
     bundler.Local_event = local_event
     bundler.Time_delta = nil

@@ -37,9 +37,12 @@ type Communicator struct {
   // as nil.
   Bootstrap_frames <-chan BootstrapFrame
 
+  // Used to send EngineEvents to the Bundler.
+  Local_engine_event chan<- EngineEvent
+
   // This is necessary for starting up a client engine.  A host can safely
   // leave this as nil.
-  Host_conn Conn
+  host_conn Conn
 
   // Bundles from remote hosts all come through here.
   remote_fan_in chan RemoteFrameBundle
@@ -57,21 +60,57 @@ type Communicator struct {
   // Easy way to accurately count live connections.
   active_conns sync.WaitGroup
 
-  // Need to have a pointer to the bundler so we can inject engine events.
-  bundler *Bundler
-
   shutdown chan struct{}
 }
 
 func (c *Communicator) Start() {
   c.remote_fan_in = make(chan RemoteFrameBundle)
   c.shutdown = make(chan struct{})
-  if c.Host_conn != nil {
-    c.conns = append(c.conns, c.Host_conn)
+  if c.host_conn != nil {
+    c.conns = append(c.conns, c.host_conn)
     c.active_conns.Add(1)
-    go c.connRoutine(c.Host_conn)
+    go c.connRoutine(c.host_conn)
   }
   go c.routine()
+}
+
+// For engines attempting to connect to a host engine, once the connection has
+// been established this function will handle the initial bootstrap.  If
+// successful the BootstrapFrame that is returned should be passed to
+// Updater.Bootstrap() and all other components can be Start()ed.
+func (c *Communicator) Join(conn Conn) (*BootstrapFrame, error) {
+  // TODO: Should have a timeout on here, maybe 10 seconds?
+  data := <-conn.RecvData()
+  var initial bootstrapInitialData
+  err := QuickGobDecode(&initial, data)
+  if err != nil {
+    conn.Close()
+    return nil, err
+  }
+  var remote_bundles []FrameBundle
+  for {
+    select {
+    case bundle := <-conn.RecvFrameBundle():
+      if bundle.Frame >= initial.Horizon {
+        remote_bundles = append(remote_bundles, bundle)
+      }
+    case data := <-conn.RecvData():
+      var boot BootstrapFrame
+      err = QuickGobDecode(&boot, data)
+      if err != nil {
+        conn.Close()
+        return nil, err
+      }
+      go func() {
+        for _, bundle := range remote_bundles {
+          c.Raw_remote_bundles <- bundle
+        }
+      }()
+      c.host_conn = conn
+      return &boot, nil
+    }
+  }
+  panic("Unreachable")
 }
 
 func (c *Communicator) Shutdown() {
@@ -106,7 +145,7 @@ func (c *Communicator) bootstrapRoutine(conn Conn, id EngineId) {
     conn.Close()
   } else {
     // TODO: Make an engine event that joins conn to the game
-    c.bundler.applyEngineEvent(EngineJoined{id})
+    c.Local_engine_event <- EngineJoined{id}
     go c.connRoutine(conn)
   }
 }
@@ -179,15 +218,15 @@ func (c *Communicator) routine() {
       }
 
     case boostrap_frame := <-c.Bootstrap_frames:
-      for _, strap := range c.bootstraps {
-        if boostrap_frame.Frame == strap.start {
+      for _, boot := range c.bootstraps {
+        if boostrap_frame.Frame == boot.start {
           data, err := QuickGobEncode(boostrap_frame)
           if err != nil {
             // TODO: LOG error
-            strap.conn.Close()
+            boot.conn.Close()
             continue
           }
-          strap.conn.SendData(data)
+          boot.conn.SendData(data)
         }
       }
       // Now remove these bootstrap conns from our list since we've sent them

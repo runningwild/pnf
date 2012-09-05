@@ -13,7 +13,8 @@ type Bundler struct {
   Ticker Ticker
 
   // Used to receive events generated locally.
-  Local_event <-chan Event
+  Local_event        <-chan Event
+  Local_engine_event <-chan EngineEvent
 
   // If this engine is out of sync with other engines the Auditor will tell us
   // how much to adjust our clock by via this channel.
@@ -23,20 +24,12 @@ type Bundler struct {
   // the updater when they are ready.
   Local_bundles chan<- FrameBundle
 
-  // When another part of the engine needs to apply an EngineEvent these
-  // channels are used to apply it and also let that component know what frame
-  // the event will be applied on.
-  local_engine_event chan EngineEvent
-  engine_event_frame chan StateFrame
-
   Current_ms int64
 
   shutdown chan struct{}
 }
 
 func (b *Bundler) Start() {
-  b.local_engine_event = make(chan EngineEvent)
-  b.engine_event_frame = make(chan StateFrame)
   b.shutdown = make(chan struct{})
   go b.routine()
 }
@@ -56,8 +49,10 @@ func (b *Bundler) routine() {
     case event := <-b.Local_event:
       current_events = append(current_events, event)
 
-    case engine_event := <-b.local_engine_event:
-      b.engine_event_frame <- current_frame
+    case engine_event := <-b.Local_engine_event:
+      // TODO: We can send the frame the engine event will be applied on,
+      // is this important
+      // b.engine_event_frame <- current_frame
       current_engine_events = append(current_engine_events, engine_event)
 
     case <-b.Ticker.Chan():
@@ -81,11 +76,6 @@ func (b *Bundler) routine() {
       b.Current_ms += delta
     }
   }
-}
-
-func (b *Bundler) applyEngineEvent(event EngineEvent) StateFrame {
-  b.local_engine_event <- event
-  return <-b.engine_event_frame
 }
 
 func (b *Bundler) Shutdown() {
