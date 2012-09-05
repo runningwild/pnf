@@ -2,9 +2,9 @@ package core
 
 import (
   "bytes"
-  "sync"
-  "errors"
   "encoding/gob"
+  "errors"
+  "sync"
 )
 
 // TODO: Pings and Joins should send the transitive closure of connected
@@ -293,26 +293,28 @@ func (hm *HostMock) Join(remote RemoteHost, data []byte) (Conn, error) {
     }
   }
   hm.net.host_mutex.Lock()
-  defer hm.net.host_mutex.Unlock()
   for i := range hm.net.hosts {
     if hm.net.hosts[i].id == rh.id {
       for _, data := range hm.net.hosts[i].conn_data {
         if data.remote_id == hm.id {
+          hm.net.host_mutex.Unlock()
           return nil, errors.New("Tried to connect to an already connected network.")
         }
       }
       err := hm.net.hosts[i].join(data)
       if err != nil {
+        hm.net.host_mutex.Unlock()
         return nil, err
       }
       c1, c2 := makeConnMockPair(hm, hm.net.hosts[i])
       go func() {
+        hm.net.host_mutex.Unlock()
         hm.net.hosts[i].new_conns <- c2
       }()
       return c1, nil
     }
   }
-
+  hm.net.host_mutex.Unlock()
   return nil, errors.New("Couldn't find the remote host.")
 }
 
