@@ -88,10 +88,11 @@ func (c *Communicator) Join(conn Conn) (*BootstrapFrame, EngineId, error) {
     return nil, 0, err
   }
   var remote_bundles []FrameBundle
+  println("Joining on horizon ", initial.Horizon)
   for {
     select {
     case bundle := <-conn.RecvFrameBundle():
-      if bundle.Frame >= initial.Horizon {
+      if bundle.Frame > initial.Horizon {
         println("Saving Frame: ", bundle.Frame)
         remote_bundles = append(remote_bundles, bundle)
       }
@@ -187,7 +188,7 @@ func (c *Communicator) routine() {
       // We send them the stateframe they're starting on and the id they will
       // be assigned when they join the game.
       initial := bootstrapInitialData{
-        c.horizon,
+        c.horizon + 1,
         EngineId(RandomId()),
       }
       data, err := QuickGobEncode(initial)

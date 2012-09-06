@@ -1,3 +1,4 @@
+// NEXT: clients do an extra think, need to avoid that
 package core_test
 
 import (
@@ -91,13 +92,14 @@ func EngineSpec(c gospec.Context) {
       if gs.(*TestGame).Thinks >= 5 {
         break
       }
+      println("PREP THINKGS: ", gs.(*TestGame).Thinks)
     }
     go func() {
       for {
         time.Sleep(20 * time.Millisecond)
         local_event <- EventA{3}
         gs := updater.RequestFinalGameState().(*TestGame)
-        println("Host: ", gs.A, gs.B)
+        println("Host: ", gs.Thinks, " ", gs.A, " ", gs.B)
       }
     }()
 
@@ -134,7 +136,7 @@ func EngineSpec(c gospec.Context) {
           time.Sleep(20 * time.Millisecond)
           local_event <- EventB{fmt.Sprintf("%d", i)}
           gs := updater.RequestFinalGameState().(*TestGame)
-          println("Client: ", gs.A, " ", gs.B)
+          println("Client: ", gs.Thinks, " ", gs.A, " ", gs.B)
         }
       }()
       for {

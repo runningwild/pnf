@@ -1,5 +1,9 @@
 package core
 
+import (
+  "fmt"
+)
+
 // Used for bootstrapping
 type BootstrapFrame struct {
   Frame StateFrame
@@ -74,21 +78,21 @@ func (u *Updater) Start(frame StateFrame, data FrameData) {
 }
 
 func (u *Updater) Bootstrap(boot *BootstrapFrame) {
-  u.data_window = NewDataWindow(u.Params.Max_frames+1, boot.Frame-1)
-  u.data_window.Set(boot.Frame-1, FrameData{
+  u.data_window = NewDataWindow(u.Params.Max_frames+1, boot.Frame)
+  u.data_window.Set(boot.Frame, FrameData{
     Bundle: make(EventBundle),
     Game:   boot.Game,
-    Info:   EngineInfo{}, // This will let us advance past it
+    Info:   EngineInfo{},
   })
-  u.data_window.Set(boot.Frame, FrameData{
+  u.data_window.Set(boot.Frame+1, FrameData{
     Bundle: make(EventBundle),
     Game:   boot.Game,
     Info:   boot.Info,
   })
-  u.local_frame = boot.Frame
-  u.global_frame = boot.Frame
-  u.oldest_dirty_frame = boot.Frame + 1
-  println("Setting oldest dirty frame to ", u.oldest_dirty_frame)
+  fmt.Printf("Bootstrap State: %v\n", boot.Game)
+  u.local_frame = boot.Frame + 1
+  u.global_frame = boot.Frame + 1
+  u.oldest_dirty_frame = boot.Frame + 2
   u.request_state = make(chan bool)
   u.current_state = make(chan Game)
   go u.routine()
@@ -104,7 +108,6 @@ func (u *Updater) advance() {
     data.Bundle.EachEngine(frame, func(id EngineId, events []EngineEvent) {
       for _, event := range events {
         event.Apply(&data.Info)
-        println("Applied engine event on frame ", frame)
       }
     })
     data.Bundle.Each(frame, func(id EngineId, events []Event) {
@@ -116,7 +119,12 @@ func (u *Updater) advance() {
         event.Apply(data.Game)
       }
     })
-    data.Game.Think()
+
+    // A nil set of Engines is the signal that this is a bootstrap game state,
+    // so we should not think on it and just copy it to the next frame.
+    if data.Info.Engines != nil {
+      data.Game.Think()
+    }
     u.data_window.Set(frame, data)
     prev_data = data
   }
@@ -141,6 +149,7 @@ func (u *Updater) advance() {
           Game:  data.Game,
           Info:  data.Info,
         }
+        fmt.Printf("BOOT: %d %v\n", u.data_window.Start(), data.Game)
         u.Bootstrap_frames <- bootstrap_frame
       }
     } else {
@@ -174,7 +183,6 @@ func (u *Updater) routine() {
         u.global_frame = u.local_frame
       }
       if u.local_frame < u.oldest_dirty_frame {
-        println(u.Params.Id, "Reset oldest from ", u.oldest_dirty_frame, " to ", u.local_frame)
         u.oldest_dirty_frame = u.local_frame
       }
       data := u.data_window.Get(local_bundle.Frame)
@@ -191,7 +199,7 @@ func (u *Updater) routine() {
         u.global_frame = remote_bundle.Frame
       }
       if remote_bundle.Frame < u.oldest_dirty_frame {
-        println(u.Params.Id, "Reset oldest from ", u.oldest_dirty_frame, " to ", remote_bundle.Frame)
+        fmt.Printf("Setting oldest form %d to %d\n", u.oldest_dirty_frame, remote_bundle.Frame)
         u.oldest_dirty_frame = remote_bundle.Frame
       }
       // TODO: Check that the remote bundle is in bounds
