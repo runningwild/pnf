@@ -1,4 +1,3 @@
-// NEXT: clients do an extra think, need to avoid that
 package core_test
 
 import (
@@ -9,14 +8,13 @@ import (
   "time"
 )
 
-func makeUnstarted(params core.EngineParams, net core.Network) (
+func makeUnstarted(params core.EngineParams, net core.Network, ticker core.Ticker) (
   chan<- core.Event, *core.Bundler, *core.Updater, *core.Communicator, *core.Auditor) {
 
   var bundler core.Bundler
   local_bundles := make(chan core.FrameBundle)
   local_event := make(chan core.Event)
   local_engine_event := make(chan core.EngineEvent)
-  ticker := core.NewBasicTicker()
   bundler.Params = params
   bundler.Local_bundles = local_bundles
   bundler.Local_event = local_event
@@ -50,13 +48,19 @@ func makeUnstarted(params core.EngineParams, net core.Network) (
   return local_event, &bundler, &updater, &communicator, &auditor
 }
 
+// NEXT: Works with a normal ticker, get it working with a fake ticker as well.
+// NEXT: Also double check that clients don't start on the wrong frame.
 func EngineSpec(c gospec.Context) {
   c.Specify("Communicator picks up new connections properly.", func() {
     go func() {
       time.Sleep(2 * time.Second)
+      fmt.Printf("")
       panic("TIMES UP!")
     }()
-    c.Expect(1, Equals, 1)
+
+    host_ticker := core.FakeTicker{}
+    client_ticker := core.FakeTicker{}
+
     var params core.EngineParams
     params.Id = 1234
     params.Delay = 1
@@ -72,7 +76,7 @@ func EngineSpec(c gospec.Context) {
     }
     host_net := core.NewHostMock(&net)
     host_net.Host(ping_func, join_func)
-    local_event, bundler, updater, communicator, auditor := makeUnstarted(params, host_net)
+    local_event, bundler, updater, communicator, auditor := makeUnstarted(params, host_net, &host_ticker)
     data := core.FrameData{
       Bundle: make(core.EventBundle),
       Game:   &TestGame{},
@@ -86,22 +90,15 @@ func EngineSpec(c gospec.Context) {
     updater.Start(0, data)
     communicator.Start()
     auditor.Start()
-    for {
-      time.Sleep(time.Millisecond)
+    local_event <- EventA{3}
+    for i := 0; i < 10; i++ {
+      host_ticker.Inc(int(params.Frame_ms))
       gs := updater.RequestFinalGameState()
-      if gs.(*TestGame).Thinks >= 5 {
-        break
+      c.Expect(gs.(*TestGame).Thinks, Equals, i+1)
+      if gs.(*TestGame).Thinks != i+1 {
+        return
       }
-      println("PREP THINKGS: ", gs.(*TestGame).Thinks)
     }
-    go func() {
-      for {
-        time.Sleep(20 * time.Millisecond)
-        local_event <- EventA{3}
-        gs := updater.RequestFinalGameState().(*TestGame)
-        println("Host: ", gs.Thinks, " ", gs.A, " ", gs.B)
-      }
-    }()
 
     client_net := core.NewHostMock(&net)
     rhs := client_net.Ping([]byte{})
@@ -116,7 +113,7 @@ func EngineSpec(c gospec.Context) {
     }
     // Client-land
     {
-      local_event, bundler, updater, communicator, auditor := makeUnstarted(params, client_net)
+      local_event, bundler, updater, communicator, auditor := makeUnstarted(params, client_net, &client_ticker)
       boot, id, err := communicator.Join(conn)
       bundler.Params.Id = id
       updater.Params.Id = id
@@ -131,20 +128,12 @@ func EngineSpec(c gospec.Context) {
       updater.Bootstrap(boot)
       communicator.Start()
       auditor.Start()
-      func() {
-        for i := 0; i < 20; i++ {
-          time.Sleep(20 * time.Millisecond)
-          local_event <- EventB{fmt.Sprintf("%d", i)}
-          gs := updater.RequestFinalGameState().(*TestGame)
-          println("Client: ", gs.Thinks, " ", gs.A, " ", gs.B)
-        }
-      }()
-      for {
-        time.Sleep(time.Millisecond)
-        gs := updater.RequestFinalGameState()
-        if gs.(*TestGame).Thinks >= 15 {
-          break
-        }
+      for i := 0; i < 20; i++ {
+        host_ticker.Inc(int(params.Frame_ms))
+        client_ticker.Inc(int(params.Frame_ms))
+        local_event <- EventA{3}
+        gs := updater.RequestFinalGameState().(*TestGame)
+        println("client: ", gs.Thinks, " ", gs.A, " ", gs.B)
       }
     }
     panic("Df")

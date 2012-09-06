@@ -49,6 +49,7 @@ func (f *FakeTicker) Start() {
   if f.c != nil {
     panic("Started an already started FakeTicker.")
   }
+  println("Fake ticker started")
   f.c = make(chan struct{})
 }
 
