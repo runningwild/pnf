@@ -20,7 +20,7 @@ func NewDataWindow(n int, start StateFrame) *DataWindow {
 
 func (w *DataWindow) posToIndex(pos StateFrame) int {
   index := (w.start + int(pos-w.first)) % len(w.data)
-  if index < 0 || index > len(w.data) {
+  if pos < w.first || pos >= w.first+StateFrame(len(w.data)) {
     panic(fmt.Sprintf("Tried to access %d, which is outside of window bounds, %d - %d.", pos, w.first, int(w.first)+len(w.data)))
   }
   return index
