@@ -29,7 +29,7 @@ type ConnMock struct {
 
   pair_id int
 
-  shutdown chan struct{}
+  purge chan bool
 }
 type dataContainer struct {
   Data         []byte
@@ -41,10 +41,14 @@ func (c *ConnMock) routine() {
     var dc dataContainer
     send := false
     select {
-    case <-c.shutdown:
-      close(c.recv_bytes)
-      close(c.recv_bundle)
-      return
+    case shutdown := <-c.purge:
+      if shutdown {
+        close(c.recv_bytes)
+        close(c.recv_bundle)
+        return
+      } else {
+        c.purge <- false
+      }
 
     case data := <-c.send_bytes:
       dc.Data = data
@@ -102,9 +106,13 @@ func (c *ConnMock) Id() int {
   return c.pair_id
 }
 func (c *ConnMock) Close() error {
-  c.shutdown <- struct{}{}
-  c.shutdown <- struct{}{}
+  c.purge <- true
+  c.purge <- true
   return nil
+}
+func (c *ConnMock) Purge() {
+  c.purge <- false
+  c.purge <- false
 }
 
 func makeConnMockPair(hm1, hm2 *HostMock) (Conn, Conn) {
@@ -117,7 +125,7 @@ func makeConnMockPair(hm1, hm2 *HostMock) (Conn, Conn) {
     send_bundle: make(chan FrameBundle),
     recv_bytes:  make(chan []byte),
     send_bytes:  make(chan []byte),
-    shutdown:    make(chan struct{}),
+    purge:       make(chan bool),
   }
   c2 := ConnMock{
     pair_id:     pair_id,
@@ -125,7 +133,7 @@ func makeConnMockPair(hm1, hm2 *HostMock) (Conn, Conn) {
     send_bundle: make(chan FrameBundle),
     recv_bytes:  make(chan []byte),
     send_bytes:  make(chan []byte),
-    shutdown:    make(chan struct{}),
+    purge:       make(chan bool),
   }
 
   send_1 := make(chan []byte)
@@ -144,7 +152,7 @@ func makeConnMockPair(hm1, hm2 *HostMock) (Conn, Conn) {
     recv:        recv_1,
     remote_send: send_2,
     remote_recv: recv_2,
-    shutdown:    c1.shutdown,
+    purge:       c1.purge,
   }
   cd2 := hostConnMockData{
     remote_id:   hm1.id,
@@ -152,7 +160,7 @@ func makeConnMockPair(hm1, hm2 *HostMock) (Conn, Conn) {
     recv:        recv_2,
     remote_send: send_1,
     remote_recv: recv_1,
-    shutdown:    c2.shutdown,
+    purge:       c2.purge,
   }
 
   go c1.routine()
@@ -183,7 +191,7 @@ type hostConnMockData struct {
   remote_send <-chan []byte
   remote_recv chan<- []byte
 
-  shutdown chan struct{}
+  purge chan bool
 }
 
 // HostMock is only useful for testing multiple engines in a single process
@@ -234,9 +242,13 @@ func (hm *HostMock) connRoutine(cd *hostConnMockData) {
         wg.Done()
       }()
 
-    case <-cd.shutdown:
+    case shutdown := <-cd.purge:
       wg.Wait()
-      return
+      if shutdown {
+        return
+      } else {
+        cd.purge <- false
+      }
     }
   }
 }
