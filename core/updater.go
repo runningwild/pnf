@@ -36,6 +36,13 @@ type Updater struct {
   // want to host can safely leave this as nil.
   Bootstrap_frames chan<- BootstrapFrame
 
+  // If this is non-negative then local events occurring on a frame before
+  // this are ignored.  This is for bootstrapping engines that haven't figured
+  // out what frame they should join the game on yet.  While an engine is
+  // bootstrapping this will be set to -1 to indicate that local bundles
+  // should be discarded for now.
+  skip_to_frame StateFrame
+
   // Used to signal that the current Game state has been requested.  True
   // indicates that we should send the most recent complete Game state, false
   // indicates that we should send the most recent Game state, even if
@@ -89,7 +96,10 @@ func (u *Updater) Bootstrap(boot *BootstrapFrame) {
     Game:   boot.Game,
     Info:   boot.Info,
   })
-  fmt.Printf("Bootstrap State: %v\n", boot.Game)
+  u.skip_to_frame = -1
+  if u.Params.Id != 1234 {
+    fmt.Printf("Bootstrap(%d): frame %d, %v\n", u.Params.Id%1000, boot.Frame, boot.Game)
+  }
   u.local_frame = boot.Frame + 1
   u.global_frame = boot.Frame + 1
   u.oldest_dirty_frame = boot.Frame + 2
@@ -149,12 +159,14 @@ func (u *Updater) advance() {
           Game:  data.Game,
           Info:  data.Info,
         }
-        fmt.Printf("BOOT: %d %v\n", u.data_window.Start(), data.Game)
         u.Bootstrap_frames <- bootstrap_frame
       }
     } else {
       break
     }
+  }
+  if u.Params.Id != 1234 {
+    fmt.Printf("Advance(%d) -> %d\n", u.Params.Id%1000, u.data_window.Start())
   }
 }
 
@@ -172,10 +184,20 @@ func (u *Updater) initFrameData(frame StateFrame) {
 
 func (u *Updater) routine() {
   for {
+    // fmt.Printf("State(%d) - 11 - %v\n", u.Params.Id%1000, u.data_window.Get(11).Game)
     select {
     case local_bundle := <-u.Local_bundles:
+      if u.skip_to_frame == -1 || local_bundle.Frame < u.skip_to_frame {
+        if u.Params.Id != 1234 {
+          fmt.Printf("Skipping(%d): %d %d\n", u.Params.Id%1000, u.skip_to_frame, local_bundle.Frame)
+        }
+        continue
+      }
       // TODO: Check that the local bundle is in bounds
       u.local_frame = local_bundle.Frame
+      if u.Params.Id != 1234 {
+        fmt.Printf("Local(%d): %d\n", u.Params.Id%1000, local_bundle.Frame)
+      }
       for frame := u.global_frame + 1; frame <= u.local_frame; frame++ {
         u.initFrameData(frame)
       }
@@ -186,12 +208,20 @@ func (u *Updater) routine() {
         u.oldest_dirty_frame = u.local_frame
       }
       data := u.data_window.Get(local_bundle.Frame)
+      if u.Params.Id != 1234 {
+        fmt.Printf("Absorb(%d): state %d, data %v\n", u.Params.Id%1000, local_bundle.Frame, data.Game)
+      }
       data.Bundle.AbsorbEventBundle(local_bundle.Bundle)
       u.data_window.Set(local_bundle.Frame, data)
       u.Broadcast_bundles <- local_bundle
       u.advance()
 
     case remote_bundle := <-u.Remote_bundles:
+      // When bootstrapping it is totally possible to get events before our
+      // world begins, so we need to make sure to discard those.
+      if remote_bundle.Frame <= u.data_window.Start() {
+        continue
+      }
       for frame := u.global_frame + 1; frame <= remote_bundle.Frame; frame++ {
         u.initFrameData(frame)
       }
@@ -199,10 +229,24 @@ func (u *Updater) routine() {
         u.global_frame = remote_bundle.Frame
       }
       if remote_bundle.Frame < u.oldest_dirty_frame {
-        fmt.Printf("Setting oldest form %d to %d\n", u.oldest_dirty_frame, remote_bundle.Frame)
         u.oldest_dirty_frame = remote_bundle.Frame
       }
+      if u.skip_to_frame == -1 {
+        remote_bundle.Bundle.EachEngine(remote_bundle.Frame, func(id EngineId, events []EngineEvent) {
+          for _, event := range events {
+            if joined, ok := event.(EngineJoined); ok && joined.Id == u.Params.Id {
+              u.skip_to_frame = remote_bundle.Frame
+              if u.Params.Id != 1234 {
+                fmt.Printf("Skipping to %d\n", u.skip_to_frame)
+              }
+            }
+          }
+        })
+      }
       // TODO: Check that the remote bundle is in bounds
+      if u.Params.Id != 1234 {
+        fmt.Printf("Remote(%d): %d\n", u.Params.Id%1000, remote_bundle.Frame)
+      }
       data := u.data_window.Get(remote_bundle.Frame)
       data.Bundle.AbsorbEventBundle(remote_bundle.Bundle)
       u.data_window.Set(remote_bundle.Frame, data)

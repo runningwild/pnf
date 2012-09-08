@@ -1,5 +1,9 @@
 package core
 
+import (
+  "fmt"
+)
+
 // The Bundler has two distinct tasks:
 // - Accept local events, bundle them when the frame advance, and send them
 // to the Updater.
@@ -59,7 +63,9 @@ func (b *Bundler) routine() {
       b.Current_ms++
       next_frame := StateFrame(b.Current_ms / b.Params.Frame_ms)
       for ; current_frame < next_frame; current_frame++ {
-        println("Bundler -> Updater: ", current_frame)
+        if b.Params.Id != 1234 {
+          fmt.Printf("Send_local(%d): %d\n", b.Params.Id%1000, current_frame)
+        }
         b.Local_bundles <- FrameBundle{
           Frame: current_frame,
           Bundle: EventBundle{
