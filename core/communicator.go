@@ -88,12 +88,10 @@ func (c *Communicator) Join(conn Conn) (*BootstrapFrame, EngineId, error) {
     return nil, 0, err
   }
   var remote_bundles []FrameBundle
-  println("Joining on horizon ", initial.Horizon)
   for {
     select {
     case bundle := <-conn.RecvFrameBundle():
       if bundle.Frame > initial.Horizon {
-        println("Saving Frame: ", bundle.Frame)
         remote_bundles = append(remote_bundles, bundle)
       }
 
@@ -210,7 +208,6 @@ func (c *Communicator) routine() {
       if bundle.Frame > c.horizon {
         c.horizon = bundle.Frame
       }
-      println("Broadcast: ", bundle.Frame, " to ", len(c.conns), " conns")
       for _, conn := range c.conns {
         go conn.SendFrameBundle(bundle)
       }

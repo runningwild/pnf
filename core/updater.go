@@ -1,9 +1,5 @@
 package core
 
-import (
-  "fmt"
-)
-
 // Used for bootstrapping
 type BootstrapFrame struct {
   Frame StateFrame
@@ -97,9 +93,6 @@ func (u *Updater) Bootstrap(boot *BootstrapFrame) {
     Info:   boot.Info,
   })
   u.skip_to_frame = -1
-  if u.Params.Id != 1234 {
-    fmt.Printf("Bootstrap(%d): frame %d, %v\n", u.Params.Id%1000, boot.Frame, boot.Game)
-  }
   u.local_frame = boot.Frame + 1
   u.global_frame = boot.Frame + 1
   u.oldest_dirty_frame = boot.Frame + 2
@@ -165,9 +158,6 @@ func (u *Updater) advance() {
       break
     }
   }
-  if u.Params.Id != 1234 {
-    fmt.Printf("Advance(%d) -> %d\n", u.Params.Id%1000, u.data_window.Start())
-  }
 }
 
 func (u *Updater) initFrameData(frame StateFrame) {
@@ -184,20 +174,13 @@ func (u *Updater) initFrameData(frame StateFrame) {
 
 func (u *Updater) routine() {
   for {
-    // fmt.Printf("State(%d) - 11 - %v\n", u.Params.Id%1000, u.data_window.Get(11).Game)
     select {
     case local_bundle := <-u.Local_bundles:
       if u.skip_to_frame == -1 || local_bundle.Frame < u.skip_to_frame {
-        if u.Params.Id != 1234 {
-          fmt.Printf("Skipping(%d): %d %d\n", u.Params.Id%1000, u.skip_to_frame, local_bundle.Frame)
-        }
         continue
       }
       // TODO: Check that the local bundle is in bounds
       u.local_frame = local_bundle.Frame
-      if u.Params.Id != 1234 {
-        fmt.Printf("Local(%d): %d\n", u.Params.Id%1000, local_bundle.Frame)
-      }
       for frame := u.global_frame + 1; frame <= u.local_frame; frame++ {
         u.initFrameData(frame)
       }
@@ -208,9 +191,6 @@ func (u *Updater) routine() {
         u.oldest_dirty_frame = u.local_frame
       }
       data := u.data_window.Get(local_bundle.Frame)
-      if u.Params.Id != 1234 {
-        fmt.Printf("Absorb(%d): state %d, data %v\n", u.Params.Id%1000, local_bundle.Frame, data.Game)
-      }
       data.Bundle.AbsorbEventBundle(local_bundle.Bundle)
       u.data_window.Set(local_bundle.Frame, data)
       u.Broadcast_bundles <- local_bundle
@@ -236,17 +216,11 @@ func (u *Updater) routine() {
           for _, event := range events {
             if joined, ok := event.(EngineJoined); ok && joined.Id == u.Params.Id {
               u.skip_to_frame = remote_bundle.Frame
-              if u.Params.Id != 1234 {
-                fmt.Printf("Skipping to %d\n", u.skip_to_frame)
-              }
             }
           }
         })
       }
       // TODO: Check that the remote bundle is in bounds
-      if u.Params.Id != 1234 {
-        fmt.Printf("Remote(%d): %d\n", u.Params.Id%1000, remote_bundle.Frame)
-      }
       data := u.data_window.Get(remote_bundle.Frame)
       data.Bundle.AbsorbEventBundle(remote_bundle.Bundle)
       u.data_window.Set(remote_bundle.Frame, data)

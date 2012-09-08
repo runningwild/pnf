@@ -4,7 +4,6 @@ import (
   "github.com/orfjackal/gospec/src/gospec"
   . "github.com/orfjackal/gospec/src/gospec"
   "runningwild/pnf/core"
-  "time"
 )
 
 func makeUnstarted(params core.EngineParams, net core.Network, ticker core.Ticker) (
@@ -111,7 +110,6 @@ func EngineSpec(c gospec.Context) {
       go func() {
         for {
           host_ticker.Inc(1)
-          println("INC!!!")
           select {
           case <-done:
             return
@@ -123,7 +121,6 @@ func EngineSpec(c gospec.Context) {
       done <- true
       bundler.Params.Id = id
       client_updater.Params.Id = id
-      println("Boot: ", boot.Frame, id)
       c.Expect(err, Equals, error(nil))
       if err != nil {
         return
@@ -134,16 +131,35 @@ func EngineSpec(c gospec.Context) {
       client_updater.Bootstrap(boot)
       communicator.Start()
       auditor.Start()
-      for i := 0; i < 20000; i++ {
-        host_ticker.Inc(int(params.Frame_ms))
-        client_ticker.Inc(int(params.Frame_ms))
+      go func() {
+        for {
+          select {
+          case <-done:
+            return
+          default:
+          }
+          host_ticker.Inc(int(params.Frame_ms))
+          client_ticker.Inc(int(params.Frame_ms))
+        }
+      }()
+      target := 100
+      var client_a, host_a int
+      for i := 0; i < 2000; i++ {
         local_event <- EventA{3}
-        gs := client_updater.RequestFinalGameState().(*TestGame)
-        println("client: ", gs.Thinks, " ", gs.A, " ", gs.B)
-        gs = host_updater.RequestFinalGameState().(*TestGame)
-        println("host: ", gs.Thinks, " ", gs.A, " ", gs.B)
-        time.Sleep(time.Millisecond)
+        gsc := client_updater.RequestFinalGameState().(*TestGame)
+        if gsc.Thinks == target {
+          client_a = gsc.A
+        }
+        gsh := host_updater.RequestFinalGameState().(*TestGame)
+        if gsh.Thinks == target {
+          host_a = gsh.A
+        }
+        if client_a > 0 && host_a > 0 {
+          break
+        }
       }
+      c.Expect(client_a, Equals, host_a)
+      done <- true
     }
   })
 }
