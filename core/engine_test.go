@@ -143,7 +143,8 @@ func EngineSpec(c gospec.Context) {
         }
       }()
       target := 100
-      var client_a, host_a int
+      client_a := -1
+      host_a := -2
       for i := 0; i < 2000; i++ {
         local_event <- EventA{3}
         gsc := client_updater.RequestFinalGameState().(*TestGame)
