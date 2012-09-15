@@ -105,6 +105,7 @@ func EngineSpec(c gospec.Context) {
     }
     // Client-land
     {
+      client_ticker.Start()
       local_event, bundler, client_updater, communicator, auditor := makeUnstarted(params, client_net, &client_ticker)
       done := make(chan bool)
       go func() {
@@ -119,6 +120,10 @@ func EngineSpec(c gospec.Context) {
       }()
       boot, id, err := communicator.Join(conn)
       done <- true
+
+      // This is just to make sure extra go-routines don't lay around forever,
+      // but we don't want different go-routines fighting over the signal.
+      done = make(chan bool, 1)
       bundler.Params.Id = id
       client_updater.Params.Id = id
       c.Expect(err, Equals, error(nil))
@@ -131,34 +136,41 @@ func EngineSpec(c gospec.Context) {
       client_updater.Bootstrap(boot)
       communicator.Start()
       auditor.Start()
+      do_tick := make(chan bool)
       go func() {
-        for {
+        for _ = range do_tick {
           select {
           case <-done:
             return
           default:
           }
-          host_ticker.Inc(int(params.Frame_ms))
-          client_ticker.Inc(int(params.Frame_ms))
+          host_ticker.Inc(1)
+          client_ticker.Inc(1)
         }
       }()
       target := 100
       client_a := -1
       host_a := -2
+      max := 0
       for i := 0; i < 2000; i++ {
+        do_tick <- true
         local_event <- EventA{3}
         gsc := client_updater.RequestFinalGameState().(*TestGame)
         if gsc.Thinks == target {
           client_a = gsc.A
         }
+        max = gsc.Thinks
         gsh := host_updater.RequestFinalGameState().(*TestGame)
         if gsh.Thinks == target {
           host_a = gsh.A
         }
         if client_a > 0 && host_a > 0 {
+          close(do_tick)
           break
         }
       }
+      c.Expect(max, Equals, -10)
+      c.Expect(client_a, Not(Equals), -1)
       c.Expect(client_a, Equals, host_a)
       done <- true
     }

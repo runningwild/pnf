@@ -47,7 +47,8 @@ type FakeTicker struct {
 
 func (f *FakeTicker) Start() {
   if f.c != nil {
-    panic("Started an already started FakeTicker.")
+    // It's ok to double-start a FakeTicker - for testing purposes
+    return
   }
   println("Fake ticker started")
   f.c = make(chan struct{})
