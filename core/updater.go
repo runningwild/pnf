@@ -39,10 +39,17 @@ type Updater struct {
   // should be discarded for now.
   skip_to_frame StateFrame
 
-  request_state chan stateRequest
-
+  // Requests for game states are made along this channel and a response is
+  // given immediately, or stored in final_requests or fast_requests to be
+  // fulfilled later.
+  request_state  chan stateRequest
   final_requests []stateRequest
   fast_requests  []stateRequest
+
+  // Requests for certain information can be made along this channel.
+  // Currently the only use is to check the number of connected players.
+  info_request  chan struct{}
+  info_response chan int
 
   // These windows store the Game states and EventBundles for each StateFrame.
   // The windows will advance as soon as all events for a given frame have
@@ -72,6 +79,8 @@ func (u *Updater) Start(frame StateFrame, data FrameData) {
   u.global_frame = frame
   u.oldest_dirty_frame = frame + 1
   u.request_state = make(chan stateRequest)
+  u.info_request = make(chan struct{})
+  u.info_response = make(chan int)
   go u.routine()
 }
 
@@ -102,6 +111,8 @@ func (u *Updater) Bootstrap(boot *BootstrapFrame) {
   u.global_frame = boot.Frame + 1
   u.oldest_dirty_frame = boot.Frame + 2
   u.request_state = make(chan stateRequest)
+  u.info_request = make(chan struct{})
+  u.info_response = make(chan int)
   go u.routine()
 }
 
@@ -193,7 +204,7 @@ func (u *Updater) routine() {
 
     // Go through any pending fast state requests for the game state and
     // fulfill any that are ready.
-    for i := 0; i < len(u.final_requests); i++ {
+    for i := 0; i < len(u.fast_requests); i++ {
       if u.fast_requests[i].frame == u.local_frame {
         u.fast_requests[i].response <- stateResponse{
           game:  u.data_window.Get(u.local_frame).Game,
@@ -288,6 +299,10 @@ func (u *Updater) routine() {
         }
       }
 
+    case <-u.info_request:
+      info := u.data_window.Get(u.data_window.Start()).Info
+      u.info_response <- len(info.Engines)
+
     case <-u.shutdown:
       close(u.Broadcast_bundles)
       return
@@ -308,6 +323,11 @@ func (u *Updater) RequestFastGameState(frame StateFrame) (Game, StateFrame) {
   u.request_state <- stateRequest{frame, response, false}
   data := <-response
   return data.game, data.frame
+}
+
+func (u *Updater) NumEngines() int {
+  u.info_request <- struct{}{}
+  return <-u.info_response
 }
 
 func (u *Updater) Shutdown() {

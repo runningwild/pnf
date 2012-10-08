@@ -106,6 +106,7 @@ func EngineSpec(c gospec.Context) {
     // Client-land
     {
       client_ticker.Start()
+      params.Id = 5678
       local_event, bundler, client_updater, communicator, auditor := makeUnstarted(params, client_net, &client_ticker)
       done := make(chan bool)
       go func() {
@@ -136,52 +137,58 @@ func EngineSpec(c gospec.Context) {
       client_updater.Bootstrap(boot)
       communicator.Start()
       auditor.Start()
-      do_tick := make(chan bool)
-      go func() {
-        for _ = range do_tick {
-          select {
-          case <-done:
-            return
-          default:
-          }
-          host_ticker.Inc(1)
-          client_ticker.Inc(1)
-        }
-      }()
+
+      // Run the engines until they've actually connected
+      for client_updater.NumEngines() < 2 && host_updater.NumEngines() < 2 {
+        host_ticker.Inc(17)
+        client_ticker.Inc(17)
+      }
+
+      // Now make sure that the two engines are in sync.  Ideally this will
+      // happen automatically, but for now, and for the sake of testing, 
+      // we're doing it manually.
+      _, current_client_frame := client_updater.RequestFinalGameState(-1)
+      _, current_host_frame := host_updater.RequestFinalGameState(-1)
+      if current_client_frame < current_host_frame {
+        go client_ticker.Inc(int(current_host_frame - current_client_frame))
+        current_client_frame = current_host_frame
+        client_updater.RequestFinalGameState(current_client_frame)
+      }
+      for current_host_frame < current_client_frame {
+        go client_ticker.Inc(int(current_client_frame - current_host_frame))
+        current_host_frame = current_client_frame
+        host_updater.RequestFinalGameState(current_host_frame)
+      }
+
       target := 100
       client_a := -1
       host_a := -2
       max := 0
-      {
-        // gsc := host_updater.RequestFastGameState().(*TestGame)
-        // println("Host fast thinks: ", gsc.Thinks)
-        // gsc = host_updater.RequestFinalGameState().(*TestGame)
-        // println("Host final thinks: ", gsc.Thinks)
-      }
-      // _, current_frame := client_updater.RequestFinalGameState(-1)
       for i := 0; i < 2000; i++ {
-        do_tick <- true
+        current_client_frame++
+        current_host_frame++
+        go host_ticker.Inc(17)
+        go client_ticker.Inc(17)
+
         local_event <- EventA{3}
-        _gsc, _ := client_updater.RequestFinalGameState(-1)
+        _gsc, _ := client_updater.RequestFinalGameState(current_client_frame)
         gsc := _gsc.(*TestGame)
         if gsc.Thinks == target {
           client_a = gsc.A
         }
         max = gsc.Thinks
-        _gsh, _ := host_updater.RequestFinalGameState(-1)
+        _gsh, _ := host_updater.RequestFinalGameState(current_host_frame)
         gsh := _gsh.(*TestGame)
         if gsh.Thinks == target {
           host_a = gsh.A
         }
         if client_a > 0 && host_a > 0 {
-          close(do_tick)
           break
         }
       }
-      c.Expect(max, Equals, -10)
+      c.Expect(max, Equals, target)
       c.Expect(client_a, Not(Equals), -1)
       c.Expect(client_a, Equals, host_a)
-      done <- true
     }
   })
 }

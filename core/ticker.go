@@ -50,7 +50,6 @@ func (f *FakeTicker) Start() {
     // It's ok to double-start a FakeTicker - for testing purposes
     return
   }
-  println("Fake ticker started")
   f.c = make(chan struct{})
 }
 
