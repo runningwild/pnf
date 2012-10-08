@@ -189,6 +189,7 @@ func (u *Updater) initFrameData(frame StateFrame) {
 
 func (u *Updater) routine() {
   for {
+    println("Updater(", u.Params.Id%10000, "):", u.data_window.Start())
     // Go through any pending final state requests for the game state and
     // fulfill any that are ready.
     for i := 0; i < len(u.final_requests); i++ {
@@ -222,7 +223,14 @@ func (u *Updater) routine() {
       }
       // TODO: Check that the local bundle is in bounds
       u.local_frame = local_bundle.Frame
-      for frame := u.global_frame + 1; frame <= u.local_frame; frame++ {
+      start := u.global_frame + 1
+      if start < u.skip_to_frame {
+        start = u.skip_to_frame
+      }
+      if u.global_frame+1 < u.data_window.Start() {
+        println("BANANA")
+      }
+      for frame := start; frame <= u.local_frame; frame++ {
         u.initFrameData(frame)
       }
       if u.global_frame < u.local_frame {
@@ -257,6 +265,7 @@ func (u *Updater) routine() {
           for _, event := range events {
             if joined, ok := event.(EngineJoined); ok && joined.Id == u.Params.Id {
               u.skip_to_frame = remote_bundle.Frame
+              println("Updater(", u.Params.Id%10000, "): Skip to frame", u.skip_to_frame)
             }
           }
         })

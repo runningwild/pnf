@@ -37,18 +37,27 @@ type dataContainer struct {
 }
 
 func (c *ConnMock) routine() {
+  current_purge := c.purge
+  completed_purge := c.purge
+  completed_purge = nil
   for {
     var dc dataContainer
     send := false
     select {
-    case shutdown := <-c.purge:
+    case shutdown := <-current_purge:
       if shutdown {
         close(c.recv_bytes)
         close(c.recv_bundle)
         return
       } else {
-        c.purge <- false
+        // TODO: This purge mechanism does NOT work!
+        current_purge = nil
+        completed_purge = c.purge
       }
+
+    case <-completed_purge:
+      current_purge = c.purge
+      completed_purge = nil
 
     case data := <-c.send_bytes:
       dc.Data = data
@@ -222,6 +231,16 @@ func NewHostMock(net *NetworkMock) Network {
   hm.new_conns = make(chan Conn)
   hm.net.hosts = append(hm.net.hosts, &hm)
   return &hm
+}
+
+func (net *NetworkMock) Purge() {
+  net.host_mutex.Lock()
+  defer net.host_mutex.Unlock()
+  for _, host := range net.hosts {
+    for conn := range host.conn_data {
+      conn.Purge()
+    }
+  }
 }
 
 func (hm *HostMock) connRoutine(cd *hostConnMockData) {

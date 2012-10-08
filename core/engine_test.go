@@ -106,25 +106,24 @@ func EngineSpec(c gospec.Context) {
     // Client-land
     {
       client_ticker.Start()
-      params.Id = 5678
       local_event, bundler, client_updater, communicator, auditor := makeUnstarted(params, client_net, &client_ticker)
       done := make(chan bool)
+      var boot *core.BootstrapFrame
+      var id core.EngineId
       go func() {
-        for {
-          host_ticker.Inc(1)
-          select {
-          case <-done:
-            return
-          default:
-          }
-        }
+        boot, id, err = communicator.Join(conn)
+        done <- true
       }()
-      boot, id, err := communicator.Join(conn)
-      done <- true
+      for {
+        select {
+        case <-done:
+          goto joined
+        default:
+          host_ticker.Inc(1)
+        }
+      }
+    joined:
 
-      // This is just to make sure extra go-routines don't lay around forever,
-      // but we don't want different go-routines fighting over the signal.
-      done = make(chan bool, 1)
       bundler.Params.Id = id
       client_updater.Params.Id = id
       c.Expect(err, Equals, error(nil))
@@ -140,8 +139,10 @@ func EngineSpec(c gospec.Context) {
 
       // Run the engines until they've actually connected
       for client_updater.NumEngines() < 2 && host_updater.NumEngines() < 2 {
-        host_ticker.Inc(17)
-        client_ticker.Inc(17)
+        println("Inc...", client_updater.NumEngines(), host_updater.NumEngines())
+        client_ticker.Inc(int(params.Frame_ms))
+        host_ticker.Inc(int(params.Frame_ms))
+        net.Purge()
       }
 
       // Now make sure that the two engines are in sync.  Ideally this will
@@ -150,13 +151,14 @@ func EngineSpec(c gospec.Context) {
       _, current_client_frame := client_updater.RequestFinalGameState(-1)
       _, current_host_frame := host_updater.RequestFinalGameState(-1)
       if current_client_frame < current_host_frame {
-        go client_ticker.Inc(int(current_host_frame - current_client_frame))
+        go client_ticker.Inc(int(current_host_frame-current_client_frame) * int(params.Frame_ms))
         current_client_frame = current_host_frame
         client_updater.RequestFinalGameState(current_client_frame)
       }
       for current_host_frame < current_client_frame {
-        go client_ticker.Inc(int(current_client_frame - current_host_frame))
+        go host_ticker.Inc(int(current_client_frame-current_host_frame)*int(params.Frame_ms) + 2)
         current_host_frame = current_client_frame
+        println("Requesting host", current_host_frame)
         host_updater.RequestFinalGameState(current_host_frame)
       }
 
