@@ -2,9 +2,9 @@ package core_test
 
 import (
   "fmt"
-  "runningwild/pnf/core"
   "github.com/orfjackal/gospec/src/gospec"
   . "github.com/orfjackal/gospec/src/gospec"
+  "runningwild/pnf/core"
 )
 
 func UpdaterSpec(c gospec.Context) {
@@ -60,7 +60,7 @@ func UpdaterSpec(c gospec.Context) {
           },
         }
       }
-      state := updater.RequestFinalGameState()
+      state, _ := updater.RequestFinalGameState(-1)
       c.Expect(state, Not(Equals), nil)
       tg := state.(*TestGame)
       c.Expect(tg.Thinks, Equals, 5)
@@ -95,7 +95,7 @@ func UpdaterSpec(c gospec.Context) {
           },
         }
       }
-      state := updater.RequestFinalGameState()
+      state, _ := updater.RequestFinalGameState(-1)
       c.Expect(state, Not(Equals), nil)
       tg := state.(*TestGame)
       c.Expect(tg.Thinks, Equals, 5)
@@ -159,7 +159,7 @@ func UpdaterSpec(c gospec.Context) {
         },
       }
 
-      state := updater.RequestFinalGameState()
+      state, _ := updater.RequestFinalGameState(-1)
       c.Expect(state, Not(Equals), nil)
       tg := state.(*TestGame)
       c.Expect(tg.Thinks, Equals, 3)

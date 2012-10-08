@@ -85,7 +85,7 @@ func EngineSpec(c gospec.Context) {
     local_event <- EventA{3}
     for i := 0; i < 10; i++ {
       host_ticker.Inc(int(params.Frame_ms))
-      gs := host_updater.RequestFinalGameState()
+      gs, _ := host_updater.RequestFinalGameState(-1)
       c.Expect(gs.(*TestGame).Thinks, Equals, i+1)
       if gs.(*TestGame).Thinks != i+1 {
         return
@@ -152,15 +152,24 @@ func EngineSpec(c gospec.Context) {
       client_a := -1
       host_a := -2
       max := 0
+      {
+        // gsc := host_updater.RequestFastGameState().(*TestGame)
+        // println("Host fast thinks: ", gsc.Thinks)
+        // gsc = host_updater.RequestFinalGameState().(*TestGame)
+        // println("Host final thinks: ", gsc.Thinks)
+      }
+      // _, current_frame := client_updater.RequestFinalGameState(-1)
       for i := 0; i < 2000; i++ {
         do_tick <- true
         local_event <- EventA{3}
-        gsc := client_updater.RequestFinalGameState().(*TestGame)
+        _gsc, _ := client_updater.RequestFinalGameState(-1)
+        gsc := _gsc.(*TestGame)
         if gsc.Thinks == target {
           client_a = gsc.A
         }
         max = gsc.Thinks
-        gsh := host_updater.RequestFinalGameState().(*TestGame)
+        _gsh, _ := host_updater.RequestFinalGameState(-1)
+        gsh := _gsh.(*TestGame)
         if gsh.Thinks == target {
           host_a = gsh.A
         }

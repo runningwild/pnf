@@ -39,14 +39,10 @@ type Updater struct {
   // should be discarded for now.
   skip_to_frame StateFrame
 
-  // Used to signal that the current Game state has been requested.  True
-  // indicates that we should send the most recent complete Game state, false
-  // indicates that we should send the most recent Game state, even if
-  // incomplete.
-  request_state chan bool
+  request_state chan stateRequest
 
-  // When requested the current Game state is sent through here.
-  current_state chan Game
+  final_requests []stateRequest
+  fast_requests  []stateRequest
 
   // These windows store the Game states and EventBundles for each StateFrame.
   // The windows will advance as soon as all events for a given frame have
@@ -75,9 +71,18 @@ func (u *Updater) Start(frame StateFrame, data FrameData) {
   u.local_frame = frame
   u.global_frame = frame
   u.oldest_dirty_frame = frame + 1
-  u.request_state = make(chan bool)
-  u.current_state = make(chan Game)
+  u.request_state = make(chan stateRequest)
   go u.routine()
+}
+
+type stateRequest struct {
+  frame    StateFrame
+  response chan stateResponse
+  final    bool
+}
+type stateResponse struct {
+  game  Game
+  frame StateFrame
 }
 
 func (u *Updater) Bootstrap(boot *BootstrapFrame) {
@@ -96,8 +101,7 @@ func (u *Updater) Bootstrap(boot *BootstrapFrame) {
   u.local_frame = boot.Frame + 1
   u.global_frame = boot.Frame + 1
   u.oldest_dirty_frame = boot.Frame + 2
-  u.request_state = make(chan bool)
-  u.current_state = make(chan Game)
+  u.request_state = make(chan stateRequest)
   go u.routine()
 }
 
@@ -174,6 +178,32 @@ func (u *Updater) initFrameData(frame StateFrame) {
 
 func (u *Updater) routine() {
   for {
+    // Go through any pending final state requests for the game state and
+    // fulfill any that are ready.
+    for i := 0; i < len(u.final_requests); i++ {
+      if u.final_requests[i].frame == u.data_window.Start() {
+        u.final_requests[i].response <- stateResponse{
+          game:  u.data_window.Get(u.data_window.Start()).Game,
+          frame: u.data_window.Start(),
+        }
+        u.final_requests[i] = u.final_requests[len(u.final_requests)-1]
+        u.final_requests = u.final_requests[0 : len(u.final_requests)-1]
+      }
+    }
+
+    // Go through any pending fast state requests for the game state and
+    // fulfill any that are ready.
+    for i := 0; i < len(u.final_requests); i++ {
+      if u.fast_requests[i].frame == u.local_frame {
+        u.fast_requests[i].response <- stateResponse{
+          game:  u.data_window.Get(u.local_frame).Game,
+          frame: u.local_frame,
+        }
+        u.fast_requests[i] = u.fast_requests[len(u.fast_requests)-1]
+        u.fast_requests = u.fast_requests[0 : len(u.fast_requests)-1]
+      }
+    }
+
     select {
     case local_bundle := <-u.Local_bundles:
       if u.skip_to_frame == -1 || local_bundle.Frame < u.skip_to_frame {
@@ -227,11 +257,35 @@ func (u *Updater) routine() {
       u.advance()
 
     case req := <-u.request_state:
-      if req {
-        g := u.data_window.Get(u.data_window.Start()).Game
-        u.current_state <- g
+      if req.final {
+        switch {
+        case req.frame < 0 || req.frame == u.data_window.Start():
+          req.response <- stateResponse{
+            game:  u.data_window.Get(u.data_window.Start()).Game,
+            frame: u.data_window.Start(),
+          }
+        case req.frame < u.data_window.Start():
+          req.response <- stateResponse{}
+        default:
+          u.final_requests = append(u.final_requests, req)
+        }
       } else {
-        u.current_state <- u.data_window.Get(u.global_frame).Game
+        switch {
+        case req.frame < 0:
+          req.response <- stateResponse{
+            game:  u.data_window.Get(u.local_frame).Game,
+            frame: u.local_frame,
+          }
+        case req.frame < u.data_window.Start():
+          req.response <- stateResponse{}
+        case req.frame <= u.local_frame:
+          req.response <- stateResponse{
+            game:  u.data_window.Get(req.frame).Game,
+            frame: req.frame,
+          }
+        default:
+          u.fast_requests = append(u.fast_requests, req)
+        }
       }
 
     case <-u.shutdown:
@@ -241,14 +295,19 @@ func (u *Updater) routine() {
   }
 }
 
-func (u *Updater) RequestFinalGameState() Game {
-  u.request_state <- true
-  return <-u.current_state
+// Pass frame < 0 to get the most recent final frame
+func (u *Updater) RequestFinalGameState(frame StateFrame) (Game, StateFrame) {
+  response := make(chan stateResponse)
+  u.request_state <- stateRequest{frame, response, true}
+  data := <-response
+  return data.game, data.frame
 }
 
-func (u *Updater) RequestFastGameState() Game {
-  u.request_state <- false
-  return <-u.current_state
+func (u *Updater) RequestFastGameState(frame StateFrame) (Game, StateFrame) {
+  response := make(chan stateResponse)
+  u.request_state <- stateRequest{frame, response, false}
+  data := <-response
+  return data.game, data.frame
 }
 
 func (u *Updater) Shutdown() {
