@@ -33,7 +33,8 @@ func NewEngine(params string) *Engine {
   return nil
 }
 func (e *Engine) GetState() Game {
-  return e.updater.RequestFinalGameState()
+  game, _ := e.updater.RequestFinalGameState(-1)
+  return game
 }
 func (e *Engine) ApplyEvent(event Event) {
   e.local_event <- event
