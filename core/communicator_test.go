@@ -34,7 +34,7 @@ func CommunicatorSpec(c gospec.Context) {
 
     hms[0].Host(ping_func, join_func)
     for i := 1; i < len(hms); i++ {
-      rhs := hms[i].Ping([]byte{})
+      rhs, _ := hms[i].Ping([]byte{})
       c.Expect(len(rhs), Equals, 1)
       if len(rhs) != 1 {
         return

@@ -1,11 +1,11 @@
 package core_test
 
 import (
+  "errors"
   "fmt"
-  "runningwild/pnf/core"
   "github.com/orfjackal/gospec/src/gospec"
   . "github.com/orfjackal/gospec/src/gospec"
-  "errors"
+  "runningwild/pnf/core"
   "sync"
 )
 
@@ -32,7 +32,7 @@ func NetworkMockSpec(c gospec.Context) {
     hm1.Host(ping_func, join_func)
     c.Expect(hm1.ActiveConnections(), Equals, 0)
     c.Expect(hm2.ActiveConnections(), Equals, 0)
-    rhs := hm2.Ping([]byte("MONKEY"))
+    rhs, _ := hm2.Ping([]byte("MONKEY"))
     c.Expect(len(rhs), Equals, 1)
     conn, err := hm2.Join(rhs[0], []byte("I am the monkey"))
     c.Expect(conn, Equals, nil)

@@ -54,12 +54,13 @@ func (g *TestGame) Copy() interface{} {
 
 func TestAllSpecs(t *testing.T) {
   r := gospec.NewRunner()
-  r.AddSpec(NetworkMockSpec)
-  r.AddSpec(BundlerSpec)
-  r.AddSpec(UpdaterSpec)
-  r.AddSpec(CommunicatorSpec)
-  r.AddSpec(AuditorSpec)
-  r.AddSpec(BaseSpec)
+  // r.AddSpec(NetworkMockSpec)
+  // r.AddSpec(NetworkStandardSpec)
+  // r.AddSpec(BundlerSpec)
+  // r.AddSpec(UpdaterSpec)
+  // r.AddSpec(CommunicatorSpec)
+  // r.AddSpec(AuditorSpec)
+  // r.AddSpec(BaseSpec)
   r.AddSpec(EngineSpec)
   gospec.MainGoTest(r, t)
 }

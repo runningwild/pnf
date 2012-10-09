@@ -53,7 +53,7 @@ type Network interface {
   Host(ping func([]byte) ([]byte, error), join func([]byte) error)
 
   // Search for hosts on the LAN, sending them data along with the ping.
-  Ping(data []byte) []RemoteHost
+  Ping(data []byte) ([]RemoteHost, error)
 
   // data can be anything.
   Join(remote RemoteHost, data []byte) (Conn, error)

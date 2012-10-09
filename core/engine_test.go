@@ -93,7 +93,7 @@ func EngineSpec(c gospec.Context) {
     }
 
     client_net := core.NewHostMock(&net)
-    rhs := client_net.Ping([]byte{})
+    rhs, _ := client_net.Ping([]byte{})
     c.Expect(len(rhs), Equals, 1)
     if len(rhs) != 1 {
       return
@@ -151,14 +151,16 @@ func EngineSpec(c gospec.Context) {
       _, current_client_frame := client_updater.RequestFinalGameState(-1)
       _, current_host_frame := host_updater.RequestFinalGameState(-1)
       if current_client_frame < current_host_frame {
-        go client_ticker.Inc(int(current_host_frame-current_client_frame) * int(params.Frame_ms))
+        go client_ticker.Inc(int(current_host_frame-current_client_frame)*int(params.Frame_ms) + 2)
         current_client_frame = current_host_frame
+        println("Requesting client", current_client_frame)
         client_updater.RequestFinalGameState(current_client_frame)
       }
       for current_host_frame < current_client_frame {
         go host_ticker.Inc(int(current_client_frame-current_host_frame)*int(params.Frame_ms) + 2)
         current_host_frame = current_client_frame
         println("Requesting host", current_host_frame)
+        // TODO: Can still deadlock on the following line sometimes
         host_updater.RequestFinalGameState(current_host_frame)
       }
 

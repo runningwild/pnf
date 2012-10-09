@@ -291,7 +291,7 @@ func (hmrh networkMockRemoteHost) Data() []byte {
 func (hmrh networkMockRemoteHost) Error() error {
   return hmrh.err
 }
-func (hm *HostMock) Ping(data []byte) []RemoteHost {
+func (hm *HostMock) Ping(data []byte) ([]RemoteHost, error) {
   hm.net.host_mutex.Lock()
   defer hm.net.host_mutex.Unlock()
   var rhs []RemoteHost
@@ -307,7 +307,7 @@ func (hm *HostMock) Ping(data []byte) []RemoteHost {
     }
     rhs = append(rhs, rh)
   }
-  return rhs
+  return rhs, nil
 }
 
 func (hm *HostMock) Join(remote RemoteHost, data []byte) (Conn, error) {
