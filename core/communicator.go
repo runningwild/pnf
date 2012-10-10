@@ -154,7 +154,6 @@ func (c *Communicator) bootstrapRoutine(conn Conn, id EngineId) {
   } else {
     // TODO: Make an engine event that joins conn to the game
     c.Local_engine_event <- EngineJoined{id}
-    println("Sent the joined event")
     go c.connRoutine(conn)
   }
 }

@@ -1,9 +1,5 @@
 package core
 
-import (
-  "fmt"
-)
-
 // Used for bootstrapping
 type BootstrapFrame struct {
   Frame StateFrame
@@ -116,7 +112,6 @@ func (u *Updater) Bootstrap(boot *BootstrapFrame) {
   })
   u.skip_to_frame = -1
   u.local_frame = boot.Frame + 1
-  fmt.Printf("Updater(%d): boot onto %d\n", u.Params.Id%10000, u.local_frame)
   u.global_frame = boot.Frame + 1
   u.oldest_dirty_frame = boot.Frame + 2
   u.request_state = make(chan stateRequest)
@@ -128,14 +123,12 @@ func (u *Updater) Bootstrap(boot *BootstrapFrame) {
 // Go through any pending final state requests for the game state and
 // fulfill any that are ready.
 func (u *Updater) fulfillFinalRequests() {
-  fmt.Printf("Updater(%d): fulfill %d\n", u.Params.Id%10000, u.data_window.Start())
   for i := 0; i < len(u.final_requests); i++ {
     if u.final_requests[i].frame == u.data_window.Start() {
       u.final_requests[i].response <- stateResponse{
         game:  u.data_window.Get(u.data_window.Start()).Game,
         frame: u.data_window.Start(),
       }
-      fmt.Printf("KABOOM")
       u.final_requests[i] = u.final_requests[len(u.final_requests)-1]
       u.final_requests = u.final_requests[0 : len(u.final_requests)-1]
     }
@@ -165,7 +158,6 @@ func (u *Updater) advance() {
     data := u.data_window.Get(frame)
     data.Game = prev_data.Game.Copy().(Game)
     new_info := prev_data.Info.Copy()
-    fmt.Printf("Updated(%d): Copied info on %d, %v <- %v\n", u.Params.Id%10000, frame, data.Info, new_info)
     data.Info = new_info
     data.Bundle.EachEngine(frame, func(id EngineId, events []EngineEvent) {
       for _, event := range events {
@@ -213,12 +205,10 @@ func (u *Updater) advance() {
         }
         u.Bootstrap_frames <- bootstrap_frame
       }
-      fmt.Printf("Updated(%d): Advanced to %d, found %v\n", u.Params.Id%10000, u.data_window.Start()+1, prev_info.Engines)
       // As soon as we get to a final state we check to see if anyone was
       // waiting on it.
       u.fulfillFinalRequests()
     } else {
-      fmt.Printf("Updated(%d): Blocked on %d, need %v, have %v\n", u.Params.Id%10000, u.data_window.Start()+1, prev_info.Engines, u.data_window.Get(u.data_window.Start()+1).Bundle)
       break
     }
   }
@@ -238,11 +228,9 @@ func (u *Updater) initFrameData(frame StateFrame) {
 
 func (u *Updater) routine() {
   for {
-    println("Updater(", u.Params.Id%10000, "):", u.data_window.Start())
     select {
     case local_bundle := <-u.Local_bundles:
       if u.skip_to_frame == -1 || local_bundle.Frame < u.skip_to_frame {
-        fmt.Printf("Updater(%d): skip %d < %d\n", u.Params.Id%10000, local_bundle.Frame, u.skip_to_frame)
         continue
       }
       if u.skip_to_frame > 0 {
@@ -258,12 +246,8 @@ func (u *Updater) routine() {
             Frame:  frame,
           }
           u.data_window.Set(frame, data)
-          fmt.Printf("Updater(%d): Fudge frame %d\n", u.Params.Id%10000, frame)
         }
         u.skip_to_frame = 0
-      }
-      if u.Params.Id != 1234 {
-        fmt.Printf("Updater(%d): Local frame %d\n", u.Params.Id%10000, local_bundle.Frame)
       }
       u.local_frame = local_bundle.Frame
       start := u.global_frame + 1
@@ -280,7 +264,6 @@ func (u *Updater) routine() {
       if u.local_frame < u.oldest_dirty_frame {
         u.oldest_dirty_frame = u.local_frame
       }
-      fmt.Printf("Updater(%d): Global frame - %d\n", u.Params.Id%10000, u.global_frame)
       data := u.data_window.Get(local_bundle.Frame)
       data.Bundle.AbsorbEventBundle(local_bundle.Bundle)
       u.data_window.Set(local_bundle.Frame, data)
@@ -291,9 +274,7 @@ func (u *Updater) routine() {
     case remote_bundle := <-u.Remote_bundles:
       // When bootstrapping it is totally possible to get events before our
       // world begins, so we need to make sure to discard those.
-      fmt.Printf("Updater(%d): Got remote on %d from %v\n", u.Params.Id%10000, remote_bundle.Frame, remote_bundle.Bundle)
       if remote_bundle.Frame <= u.data_window.Start() {
-        fmt.Printf("Updater(%d): Dropped remote frame %d\n", u.Params.Id%10000, remote_bundle.Frame)
         continue
       }
       for frame := u.global_frame + 1; frame <= remote_bundle.Frame; frame++ {
@@ -310,10 +291,6 @@ func (u *Updater) routine() {
           for _, event := range events {
             if joined, ok := event.(EngineJoined); ok && joined.Id == u.Params.Id {
               u.skip_to_frame = remote_bundle.Frame
-              println("Updater(", u.Params.Id%10000, "): Skip to frame", u.skip_to_frame)
-            }
-            if joined, ok := event.(EngineJoined); ok && joined.Id != u.Params.Id {
-              fmt.Printf("Updater(%d): %d != %d!!\n", u.Params.Id%10000, joined.Id, u.Params.Id)
             }
           }
         })
