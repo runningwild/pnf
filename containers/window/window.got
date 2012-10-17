@@ -46,7 +46,5 @@ func (w *Window) End() p {
 
 func (w *Window) Advance() {
   w.first++
-  var V v
-  w.data[w.start] = V
   w.start = (w.start + 1) %% (len(w.data))
 }

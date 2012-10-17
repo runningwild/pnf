@@ -38,12 +38,4 @@ func Uint64StringWindowSpec(c gospec.Context) {
     w.Get(start - 1)
     c.Expect("Failed to panic.", Equals, false)
   })
-  c.Specify("Elements get zeroed as they go out of range.", func() {
-    for pos := w.Start(); pos < w.End(); pos++ {
-      w.Set(pos, fmt.Sprintf("%d", pos))
-    }
-    c.Expect(w.Get(w.Start()), Equals, fmt.Sprintf("%d", w.Start()))
-    w.Advance()
-    c.Expect(w.Get(w.End()-1), Equals, "")
-  })
 }

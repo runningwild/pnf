@@ -47,8 +47,6 @@ func (w *Window) End() uint64 {
 
 func (w *Window) Advance() {
   w.first++
-  var V string
-  w.data[w.start] = V
   w.start = (w.start + 1) % (len(w.data))
 }
 // Here we will test that the types parameters are ok...
