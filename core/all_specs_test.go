@@ -51,6 +51,13 @@ func (g *TestGame) Copy() interface{} {
   g2 := *g
   return &g2
 }
+func (g *TestGame) OverwriteWith(_g2 interface{}) {
+  g2 := _g2.(*TestGame)
+  if g == g2 {
+    panic("SHIT")
+  }
+  *g = *g2
+}
 
 func TestAllSpecs(t *testing.T) {
   r := gospec.NewRunner()

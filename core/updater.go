@@ -75,6 +75,11 @@ type Updater struct {
 func (u *Updater) Start(frame StateFrame, data FrameData) {
   u.data_window = NewDataWindow(u.Params.Max_frames+1, frame)
   u.data_window.Set(frame, data)
+  for i := u.data_window.Start(); i < u.data_window.End(); i++ {
+    future_data := u.data_window.Get(i)
+    future_data.Game = data.Game.Copy().(Game)
+    u.data_window.Set(i, future_data)
+  }
   u.local_frame = frame
   u.global_frame = frame
   u.oldest_dirty_frame = frame + 1
@@ -100,15 +105,20 @@ func (u *Updater) Bootstrap(boot *BootstrapFrame) {
   for engine_id := range boot.Info.Engines {
     dummy_bundles[engine_id] = AllEvents{}
   }
+  for i := u.data_window.Start(); i < u.data_window.End(); i++ {
+    future_data := u.data_window.Get(i)
+    future_data.Game = boot.Game.Copy().(Game)
+    u.data_window.Set(i, future_data)
+  }
   u.data_window.Set(boot.Frame, FrameData{
     Bundle: dummy_bundles, // So we can advance past it any time
-    Game:   boot.Game,
+    Game:   boot.Game.Copy().(Game),
     Info:   boot.Info,
   })
   u.data_window.Set(boot.Frame+1, FrameData{
     Bundle: make(EventBundle),
-    Game:   boot.Game, // Really just a placeholder
-    Info:   boot.Info, // Prevents us from proceeding too early
+    Game:   boot.Game.Copy().(Game), // Really just a placeholder
+    Info:   boot.Info,               // Prevents us from proceeding too early
   })
   u.skip_to_frame = -1
   u.local_frame = boot.Frame + 1
@@ -156,7 +166,7 @@ func (u *Updater) advance() {
   prev_data := u.data_window.Get(u.oldest_dirty_frame - 1)
   for frame := u.oldest_dirty_frame; frame <= u.global_frame; frame++ {
     data := u.data_window.Get(frame)
-    data.Game = prev_data.Game.Copy().(Game)
+    data.Game.OverwriteWith(prev_data.Game)
     new_info := prev_data.Info.Copy()
     data.Info = new_info
     data.Bundle.EachEngine(frame, func(id EngineId, events []EngineEvent) {
@@ -219,8 +229,7 @@ func (u *Updater) initFrameData(frame StateFrame) {
     return
   }
   prev_data := u.data_window.Get(frame - 1)
-  var data FrameData
-  data.Game = prev_data.Game.Copy().(Game)
+  data := u.data_window.Get(frame)
   data.Bundle = make(EventBundle)
   data.Info = prev_data.Info.Copy()
   u.data_window.Set(frame, data)

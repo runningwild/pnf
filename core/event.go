@@ -17,7 +17,9 @@ type Game interface {
   ThinkFirst()
   Think()
   ThinkFinal()
+
   Copy() interface{}
+  OverwriteWith(game interface{})
 }
 
 type AllEvents struct {
