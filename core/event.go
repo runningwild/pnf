@@ -1,5 +1,9 @@
 package core
 
+import (
+  "fmt"
+)
+
 // FirstX happens once, potentially before any events arrive
 // X can happen multiple times, whenever anything changes
 // FinalX only happens after all events have arrived
@@ -45,7 +49,7 @@ func (fb EventBundle) AbsorbEventBundle(fb2 EventBundle) {
       // TODO: Maybe shouldn't panic?  But what should happen, at least need
       // to report the error, maybe if the events are not identical then we
       // can drop the engine.
-      panic("EngineId collision")
+      panic(fmt.Sprintf("EngineId collision: %d", k))
     }
     fb[k] = v
   }

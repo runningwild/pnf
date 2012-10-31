@@ -1,6 +1,7 @@
 package core
 
 import (
+  "encoding/gob"
   "errors"
   "fmt"
   "net"
@@ -31,7 +32,7 @@ type pingResponse struct {
 
 type joinRequest struct {
   response chan joinResponse
-  remote   RemoteHost
+  remote   standardRemoteHost
   data     []byte
 }
 type joinResponse struct {
@@ -50,7 +51,7 @@ func MakeTcpUdpNetwork(port int) (Network, error) {
 }
 
 // Listens on a udp port, if it receives any data it passes it to the ping function, then if
-// that was successful it response with the specified data.
+// that was successful it responds with the specified data.
 func (n *networkTcpUdp) launchPingRoutine(die chan struct{}) error {
   laddr, err := net.ResolveUDPAddr("udp", fmt.Sprintf(":%d", n.port))
   if err != nil {
@@ -60,29 +61,46 @@ func (n *networkTcpUdp) launchPingRoutine(die chan struct{}) error {
   if err != nil {
     return err
   }
-  err = listener.SetDeadline(time.Now().Add(time.Second))
-  if err != nil {
-    return err
-  }
-
   go func() {
+    defer listener.Close()
+
     // TODO: Should either document the size of this buffer or make it configurable.
     buf := make([]byte, 1024)
     for {
+      err = listener.SetDeadline(time.Now().Add(time.Second))
+      if err != nil {
+        go func() {
+          <-die
+        }()
+        return
+      }
       size, raddr, err := listener.ReadFromUDP(buf)
+      if err != nil {
+        go func() {
+          <-die
+        }()
+        return
+      }
       select {
       case <-die:
         return
       default:
       }
       resp, err := n.ping(buf[0:size])
+
+      // When testing locally we need a very slight delay so that we have time
+      // to start listening for the response.
+      time.Sleep(time.Millisecond * 10)
+
       if err == nil {
         // We'll block on this, but it's udp, so we probably won't hang.
-        laddr, err := net.ResolveUDPAddr("udp", ":")
+        // laddr, err := net.ResolveUDPAddr("udp", "localhost:2222")
+
         if err == nil {
-          resp_conn, err := net.DialUDP("udp", laddr, raddr)
+          resp_conn, err := net.DialUDP("udp", nil, raddr)
           if err == nil {
-            resp_conn.Write(resp)
+            _, err = resp_conn.Write(resp)
+            resp_conn.Close()
           }
         }
       }
@@ -96,21 +114,47 @@ func (n *networkTcpUdp) launchPingRoutine(die chan struct{}) error {
 func (n *networkTcpUdp) launchJoinRoutine(die chan struct{}) error {
   laddr, err := net.ResolveTCPAddr("tcp", fmt.Sprintf(":%d", n.port))
   if err != nil {
-    return err
+    return errors.New(fmt.Sprintf("Unable to resolve local tcp addr: %v", err))
   }
   listener, err := net.ListenTCP("tcp", laddr)
   if err != nil {
-    return err
+    return errors.New(fmt.Sprintf("Unable to listen for joins: %v", err))
   }
-  listener.Accept()
-  return err
-  for {
-    select {
-    case <-die:
-      return nil
-    default:
+
+  go func() {
+    <-die
+    listener.Close()
+  }()
+
+  go func() {
+    for {
+      raw_con, err := listener.Accept()
+      if err != nil {
+        panic("FUCK")
+        return
+      }
+      go func() {
+        buf := make([]byte, 1024)
+        num, err := raw_con.Read(buf)
+        if err != nil {
+          return
+        }
+        err = n.join(buf[0:num])
+        raw_con.SetWriteDeadline(time.Now().Add(time.Second))
+        if err != nil {
+          raw_con.Write([]byte(fmt.Sprintf("FAIL: %v", err)))
+          return
+        }
+        _, err = raw_con.Write([]byte("SUCCESS"))
+        if err != nil {
+          return
+        }
+        raw_con.SetDeadline(time.Time{})
+        conn := makeTcpConn(raw_con.(*net.TCPConn))
+        n.new_conns <- conn
+      }()
     }
-  }
+  }()
   return nil
 }
 
@@ -152,27 +196,104 @@ func (n *networkTcpUdp) routine() {
   }
 }
 
+type standardRemoteHost struct {
+  data []byte
+  ip   string
+  port int
+}
+
+func (rh standardRemoteHost) Data() []byte {
+  return rh.data
+}
+func (rh standardRemoteHost) Error() error {
+  return nil
+}
+
 func (n *networkTcpUdp) handlePingRequest(req pingRequest) (resp pingResponse) {
+  // Now we'll broadcast a simple ping packet and then listen for one second.
   raddr, err := net.ResolveUDPAddr("udp", fmt.Sprintf("255.255.255.255:%d", n.port))
   if err != nil {
     resp.err = errors.New(fmt.Sprintf("Unable to resolve udp raddr: %v\n", err))
     return
   }
+
   conn, err := net.DialUDP("udp", nil, raddr)
   if err != nil {
     resp.err = errors.New(fmt.Sprintf("Unable to dial: %v\n", err))
     return
   }
-  defer conn.Close()
+
   _, err = conn.Write(req.data)
   if err != nil {
     resp.err = errors.New(fmt.Sprintf("Unable to broadcast: %v\n", err))
     return
   }
+  laddr := conn.LocalAddr().(*net.UDPAddr)
+  conn.Close()
+
+  conn, err = net.ListenUDP("udp", laddr)
+  if err != nil {
+    resp.err = errors.New(fmt.Sprintf("Unable to listen: %v\n", err))
+    return
+  }
+  defer conn.Close()
+
+  // TODO: Maybe this 1 second should be configurable
+  err = conn.SetReadDeadline(time.Now().Add(time.Second))
+  if err != nil {
+    resp.err = errors.New(fmt.Sprintf("Unable to set read deadline: %v\n", err))
+    return
+  }
+
+  data := make([]byte, 2048)
+  for {
+    n, addr, err := conn.ReadFromUDP(data)
+    if err != nil {
+      return
+    }
+    var rh standardRemoteHost
+    rh.data = make([]byte, n)
+    copy(rh.data, data)
+    rh.port = addr.Port
+    rh.ip = addr.IP.String()
+    resp.hosts = append(resp.hosts, rh)
+  }
   return
 }
 
 func (n *networkTcpUdp) handleJoinRequest(req joinRequest) (resp joinResponse) {
+  raddr, err := net.ResolveTCPAddr("tcp", fmt.Sprintf("%s:%d", req.remote.ip, n.port))
+  if err != nil {
+    resp.err = errors.New(fmt.Sprintf("Unable to resolve remote tcp addr: %v", err))
+    return
+  }
+  conn, err := net.DialTCP("tcp", nil, raddr)
+  if err != nil {
+    resp.err = errors.New(fmt.Sprintf("Unable to dial: %v", err))
+    return
+  }
+
+  buf := make([]byte, 1024)
+  conn.SetDeadline(time.Now().Add(time.Second))
+
+  _, err = conn.Write(req.data)
+  if err != nil {
+    resp.err = errors.New(fmt.Sprintf("Unable to write: %v", err))
+    return
+  }
+
+  num, err := conn.Read(buf)
+  if err != nil {
+    resp.err = errors.New(fmt.Sprintf("Unable to read: %v", err))
+    return
+  }
+
+  if string(buf[0:4]) == "FAIL" {
+    resp.err = errors.New(fmt.Sprintf("Unable to join: %s", buf[0:num]))
+    return
+  }
+  conn.SetDeadline(time.Time{})
+  resp.conn = makeTcpConn(conn)
   return
 }
 
@@ -189,7 +310,11 @@ func (n *networkTcpUdp) Ping(data []byte) ([]RemoteHost, error) {
 
 func (n *networkTcpUdp) Join(remote RemoteHost, data []byte) (Conn, error) {
   c := make(chan joinResponse)
-  n.requests <- joinRequest{c, remote, data}
+  srh, ok := remote.(standardRemoteHost)
+  if !ok {
+    return nil, errors.New("Invalid RemoteHost")
+  }
+  n.requests <- joinRequest{c, srh, data}
   response := <-c
   return response.conn, response.err
 }
@@ -204,4 +329,170 @@ func (n *networkTcpUdp) ActiveConnections() int {
 
 func (n *networkTcpUdp) Shutdown() {
   close(n.requests)
+}
+
+type tcpConn struct {
+  raw  *net.TCPConn
+  data struct {
+    from_net chan []byte
+    to_pnf   chan []byte
+  }
+  bundle struct {
+    from_net chan FrameBundle
+    to_pnf   chan FrameBundle
+  }
+  send struct {
+    from_pnf chan tcpConnPayload
+    to_net   chan tcpConnPayload
+  }
+  kill chan struct{}
+}
+
+func makeTcpConn(raw *net.TCPConn) *tcpConn {
+  var c tcpConn
+  c.raw = raw
+  c.data.from_net = make(chan []byte, 100)
+  c.data.to_pnf = make(chan []byte, 100)
+  c.bundle.from_net = make(chan FrameBundle, 100)
+  c.bundle.to_pnf = make(chan FrameBundle, 100)
+  c.send.from_pnf = make(chan tcpConnPayload)
+  c.send.to_net = make(chan tcpConnPayload)
+
+  c.kill = make(chan struct{})
+  go c.readRoutine()
+  go c.writeRoutine()
+  go c.sendRoutine()
+  go c.recvDataRoutine()
+  go c.recvBundleRoutine()
+  return &c
+}
+
+func (c *tcpConn) terminate() {
+  // Send signals along c.kill
+}
+
+func check(err error) {
+  if err != nil {
+    panic(err)
+  }
+}
+
+type tcpConnPayload struct {
+  Data   []byte
+  Bundle *FrameBundle
+}
+
+func (c *tcpConn) readRoutine() {
+  dec := gob.NewDecoder(c.raw)
+  for {
+    var payload tcpConnPayload
+    err := dec.Decode(&payload)
+    if err != nil {
+      c.terminate()
+      fmt.Printf("Error in readRoutine: %v\n", err)
+      return
+    }
+    if payload.Bundle != nil {
+      c.bundle.from_net <- *payload.Bundle
+    } else {
+      c.data.from_net <- payload.Data
+    }
+  }
+}
+
+func (c *tcpConn) writeRoutine() {
+  enc := gob.NewEncoder(c.raw)
+  for payload := range c.send.to_net {
+    err := enc.Encode(payload)
+    if err != nil {
+      c.terminate()
+      fmt.Printf("Error in writeRoutine: %v\n", err)
+      return
+    }
+  }
+}
+
+func (c *tcpConn) sendRoutine() {
+  var queue []tcpConnPayload
+  var out chan tcpConnPayload
+  var payload tcpConnPayload
+  for {
+    if len(queue) > 0 {
+      out = c.send.to_net
+      payload = queue[0]
+    } else {
+      out = nil
+    }
+    select {
+    case payload = <-c.send.from_pnf:
+      queue = append(queue, payload)
+    case out <- payload:
+      queue = queue[1:]
+    }
+  }
+}
+
+// Buffers infinitely, so that we don't rely on the capacity of any channel.
+func (c *tcpConn) recvDataRoutine() {
+  var queue [][]byte
+  var out chan []byte
+  var datum []byte
+  for {
+    if len(queue) > 0 {
+      out = c.data.to_pnf
+      datum = queue[0]
+    } else {
+      out = nil
+    }
+    select {
+    case data := <-c.data.from_net:
+      queue = append(queue, data)
+    case out <- datum:
+      queue = queue[1:]
+    case <-c.kill:
+      return
+    }
+  }
+}
+
+// Exactly like recvDataRoutine(), but for the FrameBundles
+func (c *tcpConn) recvBundleRoutine() {
+  var queue []FrameBundle
+  var out chan FrameBundle
+  var datum FrameBundle
+  for {
+    if len(queue) > 0 {
+      out = c.bundle.to_pnf
+      datum = queue[0]
+    } else {
+      out = nil
+    }
+    select {
+    case bundle := <-c.bundle.from_net:
+      queue = append(queue, bundle)
+    case out <- datum:
+      queue = queue[1:]
+    case <-c.kill:
+      return
+    }
+  }
+}
+
+func (c *tcpConn) SendData(data []byte) {
+  c.send.from_pnf <- tcpConnPayload{Data: data}
+}
+func (c *tcpConn) RecvData() <-chan []byte {
+  return c.data.to_pnf
+}
+func (c *tcpConn) SendFrameBundle(bundle FrameBundle) {
+  c.send.from_pnf <- tcpConnPayload{Bundle: &bundle}
+}
+func (c *tcpConn) RecvFrameBundle() <-chan FrameBundle {
+  return c.bundle.to_pnf
+}
+func (c *tcpConn) Id() int {
+  return 0
+}
+func (c *tcpConn) Close() error {
+  return nil
 }

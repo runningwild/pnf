@@ -63,6 +63,7 @@ func TestAllSpecs(t *testing.T) {
   r := gospec.NewRunner()
   r.AddSpec(NetworkMockSpec)
   r.AddSpec(NetworkStandardSpec)
+  r.AddSpec(EngineUdpTcpSpec)
   r.AddSpec(BundlerSpec)
   r.AddSpec(UpdaterSpec)
   r.AddSpec(CommunicatorSpec)
