@@ -1,12 +1,56 @@
 package core_test
 
 import (
+  "bytes"
+  "encoding/gob"
   "fmt"
   "github.com/orfjackal/gospec/src/gospec"
   . "github.com/orfjackal/gospec/src/gospec"
   "runningwild/pnf/core"
   "time"
 )
+
+func NetworkStandardGobbingSpec(c gospec.Context) {
+  c.Specify("Basic standard network gobbing.", func() {
+    var payload core.TcpConnPayload
+    payload.Data = make([]byte, 4096)
+    for i := range payload.Data {
+      payload.Data[i] = byte(i)
+    }
+    buf := bytes.NewBuffer(nil)
+    enc := gob.NewEncoder(buf)
+    err := enc.Encode(payload)
+    c.Expect(err, Equals, error(nil))
+
+    var p2 core.TcpConnPayload
+    dec := gob.NewDecoder(buf)
+    err = dec.Decode(&p2)
+    c.Expect(err, Equals, error(nil))
+    c.Expect(string(payload.Data), Equals, string(p2.Data))
+  })
+  c.Specify("Basic standard network gobbing.", func() {
+    var payload core.TcpConnPayload
+    payload.Bundle = new(core.FrameBundle)
+    payload.Bundle.Frame = 12323
+    payload.Bundle.Bundle = map[core.EngineId]core.AllEvents{}
+    for i := core.EngineId(1); i < 1000; i++ {
+      payload.Bundle.Bundle[i] = core.AllEvents{
+        Engine: make([]core.EngineEvent, 1000),
+        Game:   make([]core.Event, 1000),
+      }
+    }
+
+    buf := bytes.NewBuffer(nil)
+    enc := gob.NewEncoder(buf)
+    err := enc.Encode(payload)
+    c.Expect(err, Equals, error(nil))
+    var p2 core.TcpConnPayload
+    dec := gob.NewDecoder(buf)
+    err = dec.Decode(&p2)
+    c.Expect(err, Equals, error(nil))
+    c.Expect(payload.Bundle.Frame, Equals, p2.Bundle.Frame)
+  })
+}
 
 func NetworkStandardSpec(c gospec.Context) {
   c.Specify("Basic standard network functionality.", func() {

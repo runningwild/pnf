@@ -1,6 +1,7 @@
 package core
 
 import (
+  // "bytes"
   "encoding/gob"
   "errors"
   "fmt"
@@ -76,16 +77,21 @@ func (n *networkTcpUdp) launchPingRoutine(die chan struct{}) error {
       }
       size, raddr, err := listener.ReadFromUDP(buf)
       if err != nil {
-        go func() {
-          <-die
-        }()
-        return
+        if err.(net.Error).Timeout() {
+          continue
+        } else {
+          go func() {
+            <-die
+          }()
+          return
+        }
       }
       select {
       case <-die:
         return
       default:
       }
+      fmt.Printf("THUNDER: GOT PINGED: '%s'\n", buf[0:size])
       resp, err := n.ping(buf[0:size])
 
       // When testing locally we need a very slight delay so that we have time
@@ -94,14 +100,11 @@ func (n *networkTcpUdp) launchPingRoutine(die chan struct{}) error {
 
       if err == nil {
         // We'll block on this, but it's udp, so we probably won't hang.
-        // laddr, err := net.ResolveUDPAddr("udp", "localhost:2222")
-
+        resp_conn, err := net.DialUDP("udp", nil, raddr)
         if err == nil {
-          resp_conn, err := net.DialUDP("udp", nil, raddr)
-          if err == nil {
-            _, err = resp_conn.Write(resp)
-            resp_conn.Close()
-          }
+          fmt.Printf("THUNDER: WRITING RESPONSE: %s\n", resp)
+          _, err = resp_conn.Write(resp)
+          resp_conn.Close()
         }
       }
     }
@@ -239,7 +242,7 @@ func (n *networkTcpUdp) handlePingRequest(req pingRequest) (resp pingResponse) {
   defer conn.Close()
 
   // TODO: Maybe this 1 second should be configurable
-  err = conn.SetReadDeadline(time.Now().Add(time.Second))
+  err = conn.SetReadDeadline(time.Now().Add(1 * time.Second))
   if err != nil {
     resp.err = errors.New(fmt.Sprintf("Unable to set read deadline: %v\n", err))
     return
@@ -267,11 +270,13 @@ func (n *networkTcpUdp) handleJoinRequest(req joinRequest) (resp joinResponse) {
     resp.err = errors.New(fmt.Sprintf("Unable to resolve remote tcp addr: %v", err))
     return
   }
+  fmt.Printf("THUNDER: A\n")
   conn, err := net.DialTCP("tcp", nil, raddr)
   if err != nil {
     resp.err = errors.New(fmt.Sprintf("Unable to dial: %v", err))
     return
   }
+  fmt.Printf("THUNDER: B\n")
 
   buf := make([]byte, 1024)
   conn.SetDeadline(time.Now().Add(time.Second))
@@ -281,17 +286,20 @@ func (n *networkTcpUdp) handleJoinRequest(req joinRequest) (resp joinResponse) {
     resp.err = errors.New(fmt.Sprintf("Unable to write: %v", err))
     return
   }
+  fmt.Printf("THUNDER: C\n")
 
   num, err := conn.Read(buf)
   if err != nil {
     resp.err = errors.New(fmt.Sprintf("Unable to read: %v", err))
     return
   }
+  fmt.Printf("THUNDER: D\n")
 
   if string(buf[0:4]) == "FAIL" {
     resp.err = errors.New(fmt.Sprintf("Unable to join: %s", buf[0:num]))
     return
   }
+  fmt.Printf("THUNDER: E\n")
   conn.SetDeadline(time.Time{})
   resp.conn = makeTcpConn(conn)
   return
@@ -342,8 +350,8 @@ type tcpConn struct {
     to_pnf   chan FrameBundle
   }
   send struct {
-    from_pnf chan tcpConnPayload
-    to_net   chan tcpConnPayload
+    from_pnf chan TcpConnPayload
+    to_net   chan TcpConnPayload
   }
   kill chan struct{}
 }
@@ -355,8 +363,8 @@ func makeTcpConn(raw *net.TCPConn) *tcpConn {
   c.data.to_pnf = make(chan []byte, 100)
   c.bundle.from_net = make(chan FrameBundle, 100)
   c.bundle.to_pnf = make(chan FrameBundle, 100)
-  c.send.from_pnf = make(chan tcpConnPayload)
-  c.send.to_net = make(chan tcpConnPayload)
+  c.send.from_pnf = make(chan TcpConnPayload)
+  c.send.to_net = make(chan TcpConnPayload)
 
   c.kill = make(chan struct{})
   go c.readRoutine()
@@ -377,15 +385,67 @@ func check(err error) {
   }
 }
 
-type tcpConnPayload struct {
+type TcpConnPayload struct {
   Data   []byte
   Bundle *FrameBundle
 }
 
+// func (cp *TcpConnPayload) GobDecode(data []byte) error {
+//   buf := bytes.NewBuffer(data)
+//   dec := gob.NewDecoder(buf)
+//   var length uint32
+//   err := dec.Decode(&length)
+//   if err != nil {
+//     return err
+//   }
+//   cp.Data = make([]byte, int(length))
+//   _, err = buf.Read(cp.Data)
+//   if err != nil {
+//     return err
+//   }
+//   var ok bool
+//   err = dec.Decode(&ok)
+//   if err != nil {
+//     return err
+//   }
+//   if !ok {
+//     return nil
+//   }
+//   err = dec.Decode(&cp.Bundle)
+//   if err != nil {
+//     return err
+//   }
+//   return nil
+// }
+
+// func (cp *TcpConnPayload) GobEncode() ([]byte, error) {
+//   buf := bytes.NewBuffer(nil)
+//   enc := gob.NewEncoder(buf)
+//   err := enc.Encode(uint32(len(cp.Data)))
+//   if err != nil {
+//     return nil, err
+//   }
+//   _, err = buf.Write(cp.Data)
+//   if err != nil {
+//     return nil, err
+//   }
+//   err = enc.Encode(cp.Bundle != nil)
+//   if err != nil {
+//     return nil, err
+//   }
+//   if cp.Bundle != nil {
+//     err = enc.Encode(cp.Bundle)
+//     if err != nil {
+//       return nil, err
+//     }
+//   }
+//   return buf.Bytes(), nil
+// }
+
 func (c *tcpConn) readRoutine() {
   dec := gob.NewDecoder(c.raw)
   for {
-    var payload tcpConnPayload
+    var payload TcpConnPayload
     err := dec.Decode(&payload)
     if err != nil {
       c.terminate()
@@ -413,9 +473,9 @@ func (c *tcpConn) writeRoutine() {
 }
 
 func (c *tcpConn) sendRoutine() {
-  var queue []tcpConnPayload
-  var out chan tcpConnPayload
-  var payload tcpConnPayload
+  var queue []TcpConnPayload
+  var out chan TcpConnPayload
+  var payload TcpConnPayload
   for {
     if len(queue) > 0 {
       out = c.send.to_net
@@ -479,13 +539,13 @@ func (c *tcpConn) recvBundleRoutine() {
 }
 
 func (c *tcpConn) SendData(data []byte) {
-  c.send.from_pnf <- tcpConnPayload{Data: data}
+  c.send.from_pnf <- TcpConnPayload{Data: data}
 }
 func (c *tcpConn) RecvData() <-chan []byte {
   return c.data.to_pnf
 }
 func (c *tcpConn) SendFrameBundle(bundle FrameBundle) {
-  c.send.from_pnf <- tcpConnPayload{Bundle: &bundle}
+  c.send.from_pnf <- TcpConnPayload{Bundle: &bundle}
 }
 func (c *tcpConn) RecvFrameBundle() <-chan FrameBundle {
   return c.bundle.to_pnf
