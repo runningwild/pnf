@@ -60,7 +60,7 @@ func UpdaterSpec(c gospec.Context) {
           },
         }
       }
-      state, _ := updater.RequestFinalGameState(-1)
+      state, _ := updater.RequestFinalGameState(cur_frame - 1)
       c.Expect(state, Not(Equals), nil)
       tg := state.(*TestGame)
       c.Expect(tg.Thinks, Equals, 5)
@@ -95,7 +95,7 @@ func UpdaterSpec(c gospec.Context) {
           },
         }
       }
-      state, _ := updater.RequestFinalGameState(-1)
+      state, _ := updater.RequestFinalGameState(cur_frame - 1)
       c.Expect(state, Not(Equals), nil)
       tg := state.(*TestGame)
       c.Expect(tg.Thinks, Equals, 5)
