@@ -1,7 +1,7 @@
 package core
 
 import (
-  // "bytes"
+  "bytes"
   "encoding/gob"
   "errors"
   "fmt"
@@ -91,7 +91,6 @@ func (n *networkTcpUdp) launchPingRoutine(die chan struct{}) error {
         return
       default:
       }
-      fmt.Printf("THUNDER: GOT PINGED: '%s'\n", buf[0:size])
       resp, err := n.ping(buf[0:size])
 
       // When testing locally we need a very slight delay so that we have time
@@ -102,7 +101,6 @@ func (n *networkTcpUdp) launchPingRoutine(die chan struct{}) error {
         // We'll block on this, but it's udp, so we probably won't hang.
         resp_conn, err := net.DialUDP("udp", nil, raddr)
         if err == nil {
-          fmt.Printf("THUNDER: WRITING RESPONSE: %s\n", resp)
           _, err = resp_conn.Write(resp)
           resp_conn.Close()
         }
@@ -270,13 +268,11 @@ func (n *networkTcpUdp) handleJoinRequest(req joinRequest) (resp joinResponse) {
     resp.err = errors.New(fmt.Sprintf("Unable to resolve remote tcp addr: %v", err))
     return
   }
-  fmt.Printf("THUNDER: A\n")
   conn, err := net.DialTCP("tcp", nil, raddr)
   if err != nil {
     resp.err = errors.New(fmt.Sprintf("Unable to dial: %v", err))
     return
   }
-  fmt.Printf("THUNDER: B\n")
 
   buf := make([]byte, 1024)
   conn.SetDeadline(time.Now().Add(time.Second))
@@ -286,20 +282,17 @@ func (n *networkTcpUdp) handleJoinRequest(req joinRequest) (resp joinResponse) {
     resp.err = errors.New(fmt.Sprintf("Unable to write: %v", err))
     return
   }
-  fmt.Printf("THUNDER: C\n")
 
   num, err := conn.Read(buf)
   if err != nil {
     resp.err = errors.New(fmt.Sprintf("Unable to read: %v", err))
     return
   }
-  fmt.Printf("THUNDER: D\n")
 
   if string(buf[0:4]) == "FAIL" {
     resp.err = errors.New(fmt.Sprintf("Unable to join: %s", buf[0:num]))
     return
   }
-  fmt.Printf("THUNDER: E\n")
   conn.SetDeadline(time.Time{})
   resp.conn = makeTcpConn(conn)
   return
@@ -442,11 +435,38 @@ type TcpConnPayload struct {
 //   return buf.Bytes(), nil
 // }
 
+// func (c *tcpConn) readRoutine() {
+//   dec := gob.NewDecoder(c.raw)
+//   for {
+//     var payload TcpConnPayload
+//     err := dec.Decode(&payload)
+//     if err != nil {
+//       c.terminate()
+//       fmt.Printf("Error in readRoutine: %v\n", err)
+//       return
+//     }
+//     if payload.Bundle != nil {
+//       c.bundle.from_net <- *payload.Bundle
+//     } else {
+//       c.data.from_net <- payload.Data
+//     }
+//   }
+// }
+
 func (c *tcpConn) readRoutine() {
-  dec := gob.NewDecoder(c.raw)
+  db := bytes.NewBuffer(nil)
+  dec := gob.NewDecoder(db)
+  buf := make([]byte, 4096*256)
   for {
+    tbuf := buf[:]
     var payload TcpConnPayload
-    err := dec.Decode(&payload)
+    n, err := c.raw.Read(tbuf)
+    if err != nil {
+      panic(err.Error())
+    }
+    tbuf = tbuf[:n]
+    db.Write(tbuf)
+    err = dec.Decode(&payload)
     if err != nil {
       c.terminate()
       fmt.Printf("Error in readRoutine: %v\n", err)
@@ -460,10 +480,31 @@ func (c *tcpConn) readRoutine() {
   }
 }
 
+// func (c *tcpConn) writeRoutine() {
+//   enc := gob.NewEncoder(c.raw)
+//   for payload := range c.send.to_net {
+//     err := enc.Encode(payload)
+//     if err != nil {
+//       c.terminate()
+//       fmt.Printf("Error in writeRoutine: %v\n", err)
+//       return
+//     }
+//     fmt.Printf("Encoded payload: %v\n", payload)
+//   }
+// }
+
 func (c *tcpConn) writeRoutine() {
-  enc := gob.NewEncoder(c.raw)
+  buf := bytes.NewBuffer(nil)
+  enc := gob.NewEncoder(buf)
   for payload := range c.send.to_net {
     err := enc.Encode(payload)
+    if err != nil {
+      c.terminate()
+      fmt.Printf("Error in writeRoutine: %v\n", err)
+      return
+    }
+    _, err = c.raw.Write(buf.Bytes())
+    buf.Reset()
     if err != nil {
       c.terminate()
       fmt.Printf("Error in writeRoutine: %v\n", err)
