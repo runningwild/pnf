@@ -1,5 +1,9 @@
 package core
 
+import (
+  "time"
+)
+
 // Used for bootstrapping
 type BootstrapFrame struct {
   Frame StateFrame
@@ -26,6 +30,11 @@ type Updater struct {
   // come in any order so it is the updater's responsibility to make sure that
   // they are applied properly.
   Remote_bundles <-chan FrameBundle
+
+  // We have to Nagle the incoming bundles or we can do unnecessary rethinks
+  // when there is a networking hiccup.  Bundles will be received from
+  // Remote_bundles, Nagled, then sent along here in groups.
+  remote_bundles chan []FrameBundle
 
   // Whenever a frame is completed it is sent to the Communicator through here
   // to be used for bootstrapping new connections.  An engine that does not
@@ -83,9 +92,11 @@ func (u *Updater) Start(frame StateFrame, data FrameData) {
   u.local_frame = frame
   u.global_frame = frame
   u.oldest_dirty_frame = frame + 1
+  u.remote_bundles = make(chan []FrameBundle)
   u.request_state = make(chan stateRequest)
   u.info_request = make(chan struct{})
   u.info_response = make(chan int)
+  go u.nagle()
   go u.routine()
 }
 
@@ -124,9 +135,11 @@ func (u *Updater) Bootstrap(boot *BootstrapFrame) {
   u.local_frame = boot.Frame + 1
   u.global_frame = boot.Frame + 1
   u.oldest_dirty_frame = boot.Frame + 2
+  u.remote_bundles = make(chan []FrameBundle)
   u.request_state = make(chan stateRequest)
   u.info_request = make(chan struct{})
   u.info_response = make(chan int)
+  go u.nagle()
   go u.routine()
 }
 
@@ -224,6 +237,23 @@ func (u *Updater) advance() {
   }
 }
 
+func (u *Updater) nagle() {
+  for bundle := range u.Remote_bundles {
+    group := []FrameBundle{bundle}
+    done := time.After(time.Microsecond)
+    for {
+      select {
+      case bundle = <-u.Remote_bundles:
+        group = append(group, bundle)
+      case <-done:
+        goto send
+      }
+    }
+  send:
+    u.remote_bundles <- group
+  }
+}
+
 func (u *Updater) initFrameData(frame StateFrame) {
   if frame-1 < u.data_window.Start() {
     return
@@ -280,34 +310,36 @@ func (u *Updater) routine() {
       u.advance()
       u.fulfillFastRequests()
 
-    case remote_bundle := <-u.Remote_bundles:
-      // When bootstrapping it is totally possible to get events before our
-      // world begins, so we need to make sure to discard those.
-      if remote_bundle.Frame <= u.data_window.Start() {
-        continue
-      }
-      for frame := u.global_frame + 1; frame <= remote_bundle.Frame; frame++ {
-        u.initFrameData(frame)
-      }
-      if u.global_frame < remote_bundle.Frame {
-        u.global_frame = remote_bundle.Frame
-      }
-      if remote_bundle.Frame < u.oldest_dirty_frame {
-        u.oldest_dirty_frame = remote_bundle.Frame
-      }
-      if u.skip_to_frame == -1 {
-        remote_bundle.Bundle.EachEngine(remote_bundle.Frame, func(id EngineId, events []EngineEvent) {
-          for _, event := range events {
-            if joined, ok := event.(EngineJoined); ok && joined.Id == u.Params.Id {
-              u.skip_to_frame = remote_bundle.Frame
+    case remote_bundles := <-u.remote_bundles:
+      for _, remote_bundle := range remote_bundles {
+        // When bootstrapping it is totally possible to get events before our
+        // world begins, so we need to make sure to discard those.
+        if remote_bundle.Frame <= u.data_window.Start() {
+          continue
+        }
+        for frame := u.global_frame + 1; frame <= remote_bundle.Frame; frame++ {
+          u.initFrameData(frame)
+        }
+        if u.global_frame < remote_bundle.Frame {
+          u.global_frame = remote_bundle.Frame
+        }
+        if remote_bundle.Frame < u.oldest_dirty_frame {
+          u.oldest_dirty_frame = remote_bundle.Frame
+        }
+        if u.skip_to_frame == -1 {
+          remote_bundle.Bundle.EachEngine(remote_bundle.Frame, func(id EngineId, events []EngineEvent) {
+            for _, event := range events {
+              if joined, ok := event.(EngineJoined); ok && joined.Id == u.Params.Id {
+                u.skip_to_frame = remote_bundle.Frame
+              }
             }
-          }
-        })
+          })
+        }
+        // TODO: Check that the remote bundle is in bounds
+        data := u.data_window.Get(remote_bundle.Frame)
+        data.Bundle.AbsorbEventBundle(remote_bundle.Bundle)
+        u.data_window.Set(remote_bundle.Frame, data)
       }
-      // TODO: Check that the remote bundle is in bounds
-      data := u.data_window.Get(remote_bundle.Frame)
-      data.Bundle.AbsorbEventBundle(remote_bundle.Bundle)
-      u.data_window.Set(remote_bundle.Frame, data)
       u.advance()
 
     case req := <-u.request_state:

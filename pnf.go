@@ -99,7 +99,7 @@ func makeUnstarted(params core.EngineParams, net core.Network, ticker core.Ticke
 
   bootstrap_frames := make(chan core.BootstrapFrame)
   broadcast_bundles := make(chan core.FrameBundle)
-  remote_bundles := make(chan core.FrameBundle)
+  remote_bundles := make(chan core.FrameBundle, 50)
   var updater core.Updater
   updater.Params = params
   updater.Bootstrap_frames = bootstrap_frames

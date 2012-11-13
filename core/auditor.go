@@ -32,9 +32,7 @@ func (a *Auditor) routine() {
   for {
     select {
     case raw_remote := <-a.Raw_remote_bundles:
-      go func() {
-        a.Remote_bundles <- raw_remote
-      }()
+      a.Remote_bundles <- raw_remote
     }
   }
 }
