@@ -1,13 +1,12 @@
 package window
 
-
 import (
   "fmt"
 )
 
 type Window struct {
-  first uint64   // lowest valued p that can access the window
-  start int // index of p's position in the window
+  first uint64 // lowest valued p that can access the window
+  start int    // index of p's position in the window
   data  []string
 }
 
@@ -20,7 +19,7 @@ func New(n int, start uint64) *Window {
 }
 
 func (w *Window) posToIndex(pos uint64) int {
-  index := (w.start + int(pos - w.first)) % len(w.data)
+  index := (w.start + int(pos-w.first)) % len(w.data)
   if index < 0 || index > len(w.data) {
     panic(fmt.Sprintf("Tried to access %d, which is outside of window bounds, %d - %d.", pos, w.first, int(w.first)+len(w.data)))
   }
@@ -49,8 +48,9 @@ func (w *Window) Advance() {
   w.first++
   w.start = (w.start + 1) % (len(w.data))
 }
+
 // Here we will test that the types parameters are ok...
 func testTypes(arg0 uint64, arg1 string) {
-    f := func(interface{}, interface{}) { } // this func does nothing...
-    f(arg0, arg1)
+  f := func(interface{}, interface{}) {} // this func does nothing...
+  f(arg0, arg1)
 }

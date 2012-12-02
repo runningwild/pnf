@@ -2,7 +2,7 @@ package pnf
 
 import (
   "errors"
-  "runningwild/pnf/core"
+  "github.com/runningwild/pnf/core"
 )
 
 type Game interface {

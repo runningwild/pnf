@@ -4,10 +4,10 @@ import (
   "bytes"
   "encoding/gob"
   "fmt"
-  . "github.com/orfjackal/gospec/src/gospec"
   "github.com/orfjackal/gospec/src/gospec"
+  . "github.com/orfjackal/gospec/src/gospec"
+  "github.com/runningwild/core"
   "net"
-  "runningwild/pnf/core"
   "time"
 )
 

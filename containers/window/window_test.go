@@ -2,9 +2,9 @@ package container_test
 
 import (
   "fmt"
-  "runningwild/pnf/containers/window/uint64_string"
   "github.com/orfjackal/gospec/src/gospec"
   . "github.com/orfjackal/gospec/src/gospec"
+  "github.com/runningwild/containers/window/uint64_string"
 )
 
 func Uint64StringWindowSpec(c gospec.Context) {

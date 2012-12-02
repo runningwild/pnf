@@ -1,9 +1,9 @@
 package core_test
 
 import (
-  "runningwild/pnf/core"
   "github.com/orfjackal/gospec/src/gospec"
   . "github.com/orfjackal/gospec/src/gospec"
+  "github.com/runningwild/core"
 )
 
 type foo struct {

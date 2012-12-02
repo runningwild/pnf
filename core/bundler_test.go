@@ -4,7 +4,7 @@ import (
   "fmt"
   "github.com/orfjackal/gospec/src/gospec"
   . "github.com/orfjackal/gospec/src/gospec"
-  "runningwild/pnf/core"
+  "github.com/runningwild/core"
 )
 
 func BundlerSpec(c gospec.Context) {
